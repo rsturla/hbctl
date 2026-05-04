@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 
 	"github.com/rsturla/hbctl/internal/health"
-	"github.com/rsturla/hbctl/internal/plugin"
 	"github.com/rsturla/hbctl/internal/system/journal"
 	"github.com/rsturla/hbctl/internal/system/proc"
 )
@@ -14,11 +13,8 @@ type Plugin struct {
 	proc    proc.Reader
 }
 
-func init() {
-	plugin.Register("diagnostics", New)
-}
 
-func New(_ json.RawMessage) (plugin.Plugin, error) {
+func New(_ json.RawMessage) (*Plugin, error) {
 	return &Plugin{
 		journal: journal.NewReader(),
 		proc:    proc.NewReader([]string{"/", "/var"}),

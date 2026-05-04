@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/rsturla/hbctl/internal/health"
-	"github.com/rsturla/hbctl/internal/plugin"
 	"github.com/rsturla/hbctl/internal/system/systemd"
 )
 
@@ -18,11 +17,8 @@ type Plugin struct {
 	cfg     Config
 }
 
-func init() {
-	plugin.Register("services", New)
-}
 
-func New(raw json.RawMessage) (plugin.Plugin, error) {
+func New(raw json.RawMessage) (*Plugin, error) {
 	var cfg Config
 	if raw != nil {
 		if err := json.Unmarshal(raw, &cfg); err != nil {

@@ -30,13 +30,16 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Ensure plugins are registered via init()
-var _ = services.Plugin{}
-var _ = diagnostics.Plugin{}
-var _ = lifecycle.Plugin{}
-var _ = configplugin.Plugin{}
-
 var version = "0.1.0-dev"
+
+func newPluginRegistry() *plugin.Registry {
+	r := plugin.NewRegistry()
+	r.Register("services", func(cfg json.RawMessage) (plugin.Plugin, error) { return services.New(cfg) })
+	r.Register("diagnostics", func(cfg json.RawMessage) (plugin.Plugin, error) { return diagnostics.New(cfg) })
+	r.Register("lifecycle", func(cfg json.RawMessage) (plugin.Plugin, error) { return lifecycle.New(cfg) })
+	r.Register("config", func(cfg json.RawMessage) (plugin.Plugin, error) { return configplugin.New(cfg) })
+	return r
+}
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
@@ -84,7 +87,7 @@ func run(cfg *config.Config) error {
 	healthAgg := health.NewAggregator()
 	deps := apiv1.Deps{}
 
-	plugins, err := loadPlugins(cfg)
+	plugins, err := loadPlugins(newPluginRegistry(), cfg)
 	if err != nil {
 		return fmt.Errorf("load plugins: %w", err)
 	}
@@ -141,10 +144,10 @@ func run(cfg *config.Config) error {
 	return g.Wait()
 }
 
-func loadPlugins(cfg *config.Config) ([]plugin.Plugin, error) {
+func loadPlugins(registry *plugin.Registry, cfg *config.Config) ([]plugin.Plugin, error) {
 	var plugins []plugin.Plugin
 	for _, name := range cfg.Plugins {
-		p, err := plugin.Create(name, nil)
+		p, err := registry.Create(name, nil)
 		if err != nil {
 			return nil, fmt.Errorf("plugin %q: %w", name, err)
 		}

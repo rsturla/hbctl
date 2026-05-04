@@ -3,7 +3,6 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	"github.com/rsturla/hbctl/internal/health"
@@ -17,38 +16,41 @@ type Plugin interface {
 
 type Factory func(cfg json.RawMessage) (Plugin, error)
 
-
-var (
-	mu        sync.Mutex
-	factories = make(map[string]Factory)
-)
-
-func Register(name string, factory Factory) {
-	mu.Lock()
-	defer mu.Unlock()
-	if _, ok := factories[name]; ok {
-		panic(fmt.Sprintf("plugin already registered: %q", name))
-	}
-	factories[name] = factory
-	slog.Debug("plugin factory registered", "name", name)
+type Registry struct {
+	mu        sync.RWMutex
+	factories map[string]Factory
 }
 
-func Available() []string {
-	mu.Lock()
-	defer mu.Unlock()
-	names := make([]string, 0, len(factories))
-	for name := range factories {
+func NewRegistry() *Registry {
+	return &Registry{factories: make(map[string]Factory)}
+}
+
+func (r *Registry) Register(name string, factory Factory) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.factories[name]; ok {
+		return fmt.Errorf("plugin already registered: %q", name)
+	}
+	r.factories[name] = factory
+	return nil
+}
+
+func (r *Registry) Create(name string, cfg json.RawMessage) (Plugin, error) {
+	r.mu.RLock()
+	factory, ok := r.factories[name]
+	r.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("unknown plugin: %q (registered: %v)", name, r.Names())
+	}
+	return factory(cfg)
+}
+
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.factories))
+	for name := range r.factories {
 		names = append(names, name)
 	}
 	return names
-}
-
-func Create(name string, cfg json.RawMessage) (Plugin, error) {
-	mu.Lock()
-	factory, ok := factories[name]
-	mu.Unlock()
-	if !ok {
-		return nil, fmt.Errorf("unknown plugin: %q (available: %v)", name, Available())
-	}
-	return factory(cfg)
 }

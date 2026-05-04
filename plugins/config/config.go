@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 
 	"github.com/rsturla/hbctl/internal/health"
-	"github.com/rsturla/hbctl/internal/plugin"
 	"github.com/rsturla/hbctl/internal/system/kargs"
 	"github.com/rsturla/hbctl/internal/system/network"
 )
@@ -14,11 +13,8 @@ type Plugin struct {
 	kargs   kargs.Manager
 }
 
-func init() {
-	plugin.Register("config", New)
-}
 
-func New(_ json.RawMessage) (plugin.Plugin, error) {
+func New(_ json.RawMessage) (*Plugin, error) {
 	return &Plugin{
 		network: network.NewManager(),
 		kargs:   kargs.NewManager(),

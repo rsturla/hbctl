@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/rsturla/hbctl/internal/health"
-	"github.com/rsturla/hbctl/internal/plugin"
 	"github.com/rsturla/hbctl/internal/system/bootc"
 )
 
@@ -13,11 +12,8 @@ type Plugin struct {
 	bootc bootc.Manager
 }
 
-func init() {
-	plugin.Register("lifecycle", New)
-}
 
-func New(_ json.RawMessage) (plugin.Plugin, error) {
+func New(_ json.RawMessage) (*Plugin, error) {
 	return &Plugin{
 		bootc: bootc.NewCLI(),
 	}, nil
