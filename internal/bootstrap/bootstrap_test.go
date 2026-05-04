@@ -370,35 +370,4 @@ func FuzzBootstrap_Token(f *testing.F) {
 	})
 }
 
-func FuzzBootstrap_CSR(f *testing.F) {
-	validCSR, _, _ := pki.GenerateCSR("valid")
-
-	f.Add(validCSR)
-	f.Add([]byte("not a CSR"))
-	f.Add([]byte{})
-	f.Add([]byte("-----BEGIN CERTIFICATE REQUEST-----\ngarbage\n-----END CERTIFICATE REQUEST-----"))
-	f.Add([]byte("-----BEGIN CERTIFICATE REQUEST-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg==\n-----END CERTIFICATE REQUEST-----"))
-
-	dir := f.TempDir()
-	_ = pki.Bootstrap(dir)
-
-	f.Fuzz(func(t *testing.T, csr []byte) {
-		token := "fuzz-token-" + t.Name()
-		_ = WriteTokenHash(dir, token)
-
-		mgr := NewManager(dir)
-		result, err := mgr.Bootstrap(token, csr, "fuzz:0")
-		if err != nil {
-			return
-		}
-		if result == nil {
-			t.Fatal("nil result without error")
-		}
-		if len(result.CACert) == 0 {
-			t.Fatal("empty CA cert in result")
-		}
-		if len(result.ClientCert) == 0 {
-			t.Fatal("empty client cert in result")
-		}
-	})
-}
+// FuzzBootstrap_CSR removed — CSR signing is fuzzed by FuzzSignCSR in internal/pki/

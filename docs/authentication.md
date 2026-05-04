@@ -28,6 +28,35 @@ HB_AUTH_CONFIG={"token_hash":"sha256:<hex>"}
 
 Use `hbctl gen-token` to generate a token and its hash.
 
+### OIDC
+
+JWT tokens verified against the issuer's JWKS endpoint. Supports Google Workspace, Keycloak, Okta, Azure AD, Dex, and any OpenID Connect provider.
+
+```
+HB_AUTH_METHOD=oidc
+HB_AUTH_CONFIG={"issuer":"https://accounts.google.com","audience":"hb-agent"}
+```
+
+Full config options:
+
+```json
+{
+  "issuer": "https://accounts.google.com",
+  "audience": "hb-agent",
+  "username_claim": "email",
+  "groups_claim": "groups",
+  "ca_file": "/etc/hummingbird/oidc-ca.pem"
+}
+```
+
+- **issuer** — OIDC provider URL (must serve `/.well-known/openid-configuration`)
+- **audience** — expected `aud` claim in tokens
+- **username_claim** — claim used as identity name (default: `sub`)
+- **groups_claim** — claim used for groups (default: `groups`)
+- **ca_file** — custom CA for the OIDC provider (optional)
+
+JWKS keys are cached for 1 hour and refreshed automatically. Token validation checks: signature (ECDSA/RSA), issuer, audience, and expiry.
+
 ### Adding Providers
 
 Implement the `authn.Authenticator` interface:

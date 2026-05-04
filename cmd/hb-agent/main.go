@@ -15,6 +15,7 @@ import (
 	apiv1 "github.com/rsturla/hbctl/internal/api/v1alpha1"
 	"github.com/rsturla/hbctl/internal/authn"
 	authnmtls "github.com/rsturla/hbctl/internal/authn/mtls"
+	authnoidc "github.com/rsturla/hbctl/internal/authn/oidc"
 	authntoken "github.com/rsturla/hbctl/internal/authn/token"
 	"github.com/rsturla/hbctl/internal/authz"
 	authzcedar "github.com/rsturla/hbctl/internal/authz/cedar"
@@ -177,6 +178,7 @@ func buildDeps(p plugin.Plugin, deps *apiv1.Deps) {
 func createAuthenticator(cfg *config.Config) (authn.Authenticator, error) {
 	registry := authn.NewRegistry()
 	must(registry.Register("mtls", authnmtls.New))
+	must(registry.Register("oidc", authnoidc.New))
 	must(registry.Register("token", authntoken.New))
 
 	var cfgJSON json.RawMessage
