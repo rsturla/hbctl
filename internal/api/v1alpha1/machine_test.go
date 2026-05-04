@@ -151,9 +151,9 @@ func TestHealth_Healthy(t *testing.T) {
 		&fakeHealthChecker{
 			result: &health.Result{
 				Status: health.Healthy,
-				Services: []health.ServiceHealth{
-					{Name: "crio.service", State: "active", SubState: "running", Healthy: true},
-					{Name: "kubelet.service", State: "active", SubState: "running", Healthy: true},
+				Checks: []health.CheckResult{
+					{Name: "crio.service", Message: "running", Status: health.Healthy, Critical: true},
+					{Name: "kubelet.service", Message: "running", Status: health.Healthy, Critical: true},
 				},
 			},
 		},
@@ -180,8 +180,8 @@ func TestHealth_Unhealthy(t *testing.T) {
 		&fakeHealthChecker{
 			result: &health.Result{
 				Status: health.Unhealthy,
-				Services: []health.ServiceHealth{
-					{Name: "kubelet.service", State: "inactive", SubState: "dead", Healthy: false},
+				Checks: []health.CheckResult{
+					{Name: "services:kubelet.service", Status: health.Unhealthy, Message: "dead", Critical: true},
 				},
 			},
 		},
@@ -228,9 +228,9 @@ func TestHealth_ServiceFieldMapping(t *testing.T) {
 		&fakeHealthChecker{
 			result: &health.Result{
 				Status: health.Unhealthy,
-				Services: []health.ServiceHealth{
-					{Name: "crio.service", State: "active", SubState: "running", Healthy: true},
-					{Name: "kubelet.service", State: "failed", SubState: "failed", Healthy: false},
+				Checks: []health.CheckResult{
+					{Name: "crio.service", Message: "running", Status: health.Healthy, Critical: true},
+					{Name: "services:kubelet.service", Status: health.Unhealthy, Message: "failed", Critical: true},
 				},
 			},
 		},
@@ -272,7 +272,6 @@ func TestHealth_EmptyServices(t *testing.T) {
 		&fakeHealthChecker{
 			result: &health.Result{
 				Status:   health.Healthy,
-				Services: nil,
 			},
 		},
 		nil,

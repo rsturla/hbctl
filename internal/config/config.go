@@ -16,6 +16,7 @@ type Config struct {
 	AuthConfig     string
 	AuthzMethod    string
 	AuthzConfig    string
+	Plugins        []string
 }
 
 func Load() *Config {
@@ -29,6 +30,7 @@ func Load() *Config {
 		AuthConfig:     envOr("HB_AUTH_CONFIG", ""),
 		AuthzMethod:    envOr("HB_AUTHZ_METHOD", "allow-all"),
 		AuthzConfig:    envOr("HB_AUTHZ_CONFIG", ""),
+		Plugins:        envOrStringSlice("HB_PLUGINS", []string{"services", "diagnostics", "lifecycle", "config"}),
 	}
 }
 

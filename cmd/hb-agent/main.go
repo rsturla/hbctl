@@ -22,14 +22,19 @@ import (
 	"github.com/rsturla/hbctl/internal/config"
 	"github.com/rsturla/hbctl/internal/health"
 	"github.com/rsturla/hbctl/internal/pki"
-	"github.com/rsturla/hbctl/internal/system/bootc"
-	"github.com/rsturla/hbctl/internal/system/journal"
-	"github.com/rsturla/hbctl/internal/system/kargs"
-	"github.com/rsturla/hbctl/internal/system/network"
-	"github.com/rsturla/hbctl/internal/system/proc"
-	"github.com/rsturla/hbctl/internal/system/systemd"
+	"github.com/rsturla/hbctl/internal/plugin"
+	configplugin "github.com/rsturla/hbctl/plugins/config"
+	"github.com/rsturla/hbctl/plugins/diagnostics"
+	"github.com/rsturla/hbctl/plugins/lifecycle"
+	"github.com/rsturla/hbctl/plugins/services"
 	"golang.org/x/sync/errgroup"
 )
+
+// Ensure plugins are registered via init()
+var _ = services.Plugin{}
+var _ = diagnostics.Plugin{}
+var _ = lifecycle.Plugin{}
+var _ = configplugin.Plugin{}
 
 var version = "0.1.0-dev"
 
@@ -42,7 +47,7 @@ func main() {
 	cfg := config.Load()
 	setupLogging(cfg.LogFormat)
 
-	slog.Info("hb-agent starting", "version", version)
+	slog.Info("hb-agent starting", "version", version, "plugins", cfg.Plugins)
 
 	if err := run(cfg); err != nil {
 		slog.Error("fatal", "error", err)
@@ -68,34 +73,35 @@ func run(cfg *config.Config) error {
 		return fmt.Errorf("create authenticator: %w", err)
 	}
 
-	checker := health.NewSystemdChecker(cfg.HealthUnits)
-
-	bm := bootstrap.NewManager(cfg.TLSDir)
-
-	if fp, err := bootstrap.CAFingerprint(cfg.TLSDir); err == nil {
-		slog.Info("CA fingerprint", "fingerprint", fp)
-	}
-	if fp, err := bootstrap.ServerFingerprint(cfg.TLSDir); err == nil {
-		slog.Info("server fingerprint", "fingerprint", fp)
-	}
-
-	deps := apiv1.Deps{
-		Health:    checker,
-		Bootc:    bootc.NewCLI(),
-		Journal:  journal.NewReader(),
-		Systemd:  systemd.NewManager(),
-		Proc:     proc.NewReader([]string{"/", "/var"}),
-		Network:  network.NewManager(),
-		Kargs:    kargs.NewManager(),
-		Bootstrap: bm,
-	}
-
 	az, err := createAuthorizer(cfg)
 	if err != nil {
 		return fmt.Errorf("create authorizer: %w", err)
 	}
 	if cfg.AuthzMethod == "allow-all" {
 		slog.Warn("SECURITY: using allow-all authorizer — all authenticated users have full access. Set HB_AUTHZ_METHOD=cedar for production use.")
+	}
+
+	healthAgg := health.NewAggregator()
+	deps := apiv1.Deps{}
+
+	plugins, err := loadPlugins(cfg)
+	if err != nil {
+		return fmt.Errorf("load plugins: %w", err)
+	}
+	for _, p := range plugins {
+		healthAgg.Register(p.HealthChecks()...)
+		buildDeps(p, &deps)
+		slog.Info("plugin loaded", "name", p.Name())
+	}
+
+	bm := bootstrap.NewManager(cfg.TLSDir)
+	deps.Bootstrap = bm
+
+	if fp, err := bootstrap.CAFingerprint(cfg.TLSDir); err == nil {
+		slog.Info("CA fingerprint", "fingerprint", fp)
+	}
+	if fp, err := bootstrap.ServerFingerprint(cfg.TLSDir); err == nil {
+		slog.Info("server fingerprint", "fingerprint", fp)
 	}
 
 	srv := agent.NewServer(agent.Options{
@@ -125,7 +131,7 @@ func run(cfg *config.Config) error {
 	})
 
 	g.Go(func() error {
-		return watchdogLoop(gctx, checker, cfg.HealthInterval)
+		return watchdogLoop(gctx, healthAgg, cfg.HealthInterval)
 	})
 
 	if _, err := daemon.SdNotify(false, daemon.SdNotifyReady); err != nil {
@@ -133,6 +139,36 @@ func run(cfg *config.Config) error {
 	}
 
 	return g.Wait()
+}
+
+func loadPlugins(cfg *config.Config) ([]plugin.Plugin, error) {
+	var plugins []plugin.Plugin
+	for _, name := range cfg.Plugins {
+		p, err := plugin.Create(name, nil)
+		if err != nil {
+			return nil, fmt.Errorf("plugin %q: %w", name, err)
+		}
+		if err := p.Init(); err != nil {
+			return nil, fmt.Errorf("plugin %q init: %w", name, err)
+		}
+		plugins = append(plugins, p)
+	}
+	return plugins, nil
+}
+
+func buildDeps(p plugin.Plugin, deps *apiv1.Deps) {
+	switch v := p.(type) {
+	case *services.Plugin:
+		deps.Systemd = v.Systemd()
+	case *diagnostics.Plugin:
+		deps.Journal = v.Journal()
+		deps.Proc = v.Proc()
+	case *lifecycle.Plugin:
+		deps.Bootc = v.Bootc()
+	case *configplugin.Plugin:
+		deps.Network = v.Network()
+		deps.Kargs = v.Kargs()
+	}
 }
 
 func createAuthenticator(cfg *config.Config) (authn.Authenticator, error) {
@@ -175,7 +211,7 @@ func watchdogLoop(ctx context.Context, checker health.Checker, interval time.Dur
 				slog.Warn("health check failed", "error", err)
 				continue
 			}
-			if result.Status == health.Healthy {
+			if result.Status != health.Unhealthy {
 				if _, err := daemon.SdNotify(false, daemon.SdNotifyWatchdog); err != nil {
 					slog.Warn("sd_notify WATCHDOG failed", "error", err)
 				}

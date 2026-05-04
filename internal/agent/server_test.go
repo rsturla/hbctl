@@ -343,8 +343,8 @@ func TestServer_ConcurrentRPCs(t *testing.T) {
 	checker := &fakeChecker{
 		result: &health.Result{
 			Status: health.Healthy,
-			Services: []health.ServiceHealth{
-				{Name: "crio.service", State: "active", SubState: "running", Healthy: true},
+			Checks: []health.CheckResult{
+				{Name: "services:crio.service", Status: health.Healthy, Message: "running", Critical: true},
 			},
 		},
 	}
@@ -448,9 +448,9 @@ func TestServer_HealthRPCPassesServiceDetails(t *testing.T) {
 	ts := newTestServer(t, &fakeChecker{
 		result: &health.Result{
 			Status: health.Unhealthy,
-			Services: []health.ServiceHealth{
-				{Name: "crio.service", State: "active", SubState: "running", Healthy: true},
-				{Name: "kubelet.service", State: "failed", SubState: "failed", Healthy: false},
+			Checks: []health.CheckResult{
+				{Name: "services:crio.service", Status: health.Healthy, Message: "running", Critical: true},
+				{Name: "services:kubelet.service", Status: health.Unhealthy, Message: "failed", Critical: true},
 			},
 		},
 	}, nil)

@@ -2,184 +2,84 @@ package health
 
 import (
 	"context"
-	"fmt"
 	"testing"
 )
 
-type fakeChecker struct {
-	result *Result
-	err    error
-}
-
-func (f *fakeChecker) Check(_ context.Context) (*Result, error) {
-	return f.result, f.err
-}
-
-func TestCheckerInterface_Healthy(t *testing.T) {
+func TestAggregator_AllHealthy(t *testing.T) {
 	t.Parallel()
-
-	fc := &fakeChecker{
-		result: &Result{
-			Status: Healthy,
-			Services: []ServiceHealth{
-				{Name: "crio.service", State: "active", SubState: "running", Healthy: true},
-				{Name: "kubelet.service", State: "active", SubState: "running", Healthy: true},
-			},
-		},
-	}
-
-	var c Checker = fc
-	result, err := c.Check(context.Background())
-	if err != nil {
-		t.Fatalf("Check: %v", err)
-	}
-	if result.Status != Healthy {
-		t.Errorf("Status = %d, want Healthy", result.Status)
-	}
-	if len(result.Services) != 2 {
-		t.Errorf("got %d services, want 2", len(result.Services))
-	}
+	agg := NewAggregator()
+	agg.Register(
+		Probe{Name: "a", Critical: true, Check: func(_ context.Context) (Status, string) { return Healthy, "ok" }},
+		Probe{Name: "b", Critical: true, Check: func(_ context.Context) (Status, string) { return Healthy, "ok" }},
+	)
+	result, err := agg.Check(context.Background())
+	if err != nil { t.Fatalf("Check: %v", err) }
+	if result.Status != Healthy { t.Errorf("Status = %d, want Healthy", result.Status) }
+	if len(result.Checks) != 2 { t.Errorf("Checks = %d, want 2", len(result.Checks)) }
 }
 
-func TestCheckerInterface_Unhealthy(t *testing.T) {
+func TestAggregator_CriticalUnhealthy(t *testing.T) {
 	t.Parallel()
-
-	fc := &fakeChecker{
-		result: &Result{
-			Status: Unhealthy,
-			Services: []ServiceHealth{
-				{Name: "crio.service", State: "active", SubState: "running", Healthy: true},
-				{Name: "kubelet.service", State: "inactive", SubState: "dead", Healthy: false},
-			},
-		},
-	}
-
-	var c Checker = fc
-	result, _ := c.Check(context.Background())
-	if result.Status != Unhealthy {
-		t.Errorf("Status = %d, want Unhealthy", result.Status)
-	}
+	agg := NewAggregator()
+	agg.Register(
+		Probe{Name: "ok", Critical: true, Check: func(_ context.Context) (Status, string) { return Healthy, "running" }},
+		Probe{Name: "bad", Critical: true, Check: func(_ context.Context) (Status, string) { return Unhealthy, "dead" }},
+	)
+	result, _ := agg.Check(context.Background())
+	if result.Status != Unhealthy { t.Errorf("Status = %d, want Unhealthy", result.Status) }
 }
 
-func TestCheckerInterface_Error(t *testing.T) {
+func TestAggregator_NonCriticalUnhealthy_Degraded(t *testing.T) {
 	t.Parallel()
+	agg := NewAggregator()
+	agg.Register(
+		Probe{Name: "core", Critical: true, Check: func(_ context.Context) (Status, string) { return Healthy, "ok" }},
+		Probe{Name: "dns", Critical: false, Check: func(_ context.Context) (Status, string) { return Unhealthy, "timeout" }},
+	)
+	result, _ := agg.Check(context.Background())
+	if result.Status != Degraded { t.Errorf("Status = %d, want Degraded", result.Status) }
+}
 
-	fc := &fakeChecker{
-		err: fmt.Errorf("dbus connection refused"),
-	}
+func TestAggregator_Empty(t *testing.T) {
+	t.Parallel()
+	agg := NewAggregator()
+	result, _ := agg.Check(context.Background())
+	if result.Status != Healthy { t.Errorf("empty should be Healthy, got %d", result.Status) }
+}
 
-	var c Checker = fc
-	_, err := c.Check(context.Background())
-	if err == nil {
-		t.Error("expected error from checker")
-	}
+func TestAggregator_CheckResultFields(t *testing.T) {
+	t.Parallel()
+	agg := NewAggregator()
+	agg.Register(Probe{Name: "test:unit", Critical: true, Check: func(_ context.Context) (Status, string) { return Healthy, "running" }})
+	result, _ := agg.Check(context.Background())
+	if len(result.Checks) != 1 { t.Fatal("expected 1 check") }
+	c := result.Checks[0]
+	if c.Name != "test:unit" { t.Errorf("Name = %q", c.Name) }
+	if c.Status != Healthy { t.Errorf("Status = %d", c.Status) }
+	if c.Message != "running" { t.Errorf("Message = %q", c.Message) }
+	if !c.Critical { t.Error("Critical should be true") }
 }
 
 func TestStatusConstants(t *testing.T) {
 	t.Parallel()
-
-	if Unknown != 0 {
-		t.Errorf("Unknown = %d, want 0", Unknown)
-	}
-	if Healthy != 1 {
-		t.Errorf("Healthy = %d, want 1", Healthy)
-	}
-	if Unhealthy != 2 {
-		t.Errorf("Unhealthy = %d, want 2", Unhealthy)
-	}
+	if Unknown != 0 { t.Errorf("Unknown = %d", Unknown) }
+	if Healthy != 1 { t.Errorf("Healthy = %d", Healthy) }
+	if Unhealthy != 2 { t.Errorf("Unhealthy = %d", Unhealthy) }
+	if Degraded != 3 { t.Errorf("Degraded = %d", Degraded) }
 }
 
-func TestServiceHealth_StateVariations(t *testing.T) {
+func TestSystemdUnitProbes(t *testing.T) {
 	t.Parallel()
-
-	cases := []struct {
-		name     string
-		state    string
-		subState string
-		healthy  bool
-	}{
-		{"active+running", "active", "running", true},
-		{"active+exited", "active", "exited", true},
-		{"inactive+dead", "inactive", "dead", false},
-		{"failed+failed", "failed", "failed", false},
-		{"activating+start", "activating", "start", false},
-		{"deactivating+stop", "deactivating", "stop-sigterm", false},
-		{"reloading+reload", "reloading", "reload", false},
-		{"active+waiting", "active", "waiting", false},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			sh := ServiceHealth{
-				Name:     "test.service",
-				State:    tc.state,
-				SubState: tc.subState,
-				Healthy:  tc.healthy,
-			}
-			if sh.Healthy != tc.healthy {
-				t.Errorf("Healthy = %v, want %v for state=%s sub=%s", sh.Healthy, tc.healthy, tc.state, tc.subState)
-			}
-		})
-	}
+	probes := SystemdUnitProbes([]string{"a.service", "b.service"})
+	if len(probes) != 2 { t.Fatalf("probes = %d, want 2", len(probes)) }
+	if probes[0].Name != "services:a.service" { t.Errorf("Name = %q", probes[0].Name) }
+	if !probes[0].Critical { t.Error("systemd probes should be critical") }
 }
 
-func TestNewSystemdChecker(t *testing.T) {
+func TestCheckerInterface(t *testing.T) {
 	t.Parallel()
-
-	units := []string{"crio.service", "kubelet.service"}
-	c := NewSystemdChecker(units)
-
-	if len(c.units) != 2 {
-		t.Errorf("units length = %d, want 2", len(c.units))
-	}
-	if c.units[0] != "crio.service" {
-		t.Errorf("units[0] = %q, want crio.service", c.units[0])
-	}
-}
-
-func TestNewSystemdChecker_EmptyUnits(t *testing.T) {
-	t.Parallel()
-
-	c := NewSystemdChecker(nil)
-	if len(c.units) != 0 {
-		t.Errorf("units length = %d, want 0", len(c.units))
-	}
-}
-
-func TestResult_NoServices(t *testing.T) {
-	t.Parallel()
-
-	r := &Result{
-		Status:   Healthy,
-		Services: nil,
-	}
-	if r.Status != Healthy {
-		t.Errorf("Status = %d, want Healthy", r.Status)
-	}
-	if r.Services != nil {
-		t.Errorf("Services = %v, want nil", r.Services)
-	}
-}
-
-func TestResult_MixedServices(t *testing.T) {
-	t.Parallel()
-
-	r := &Result{
-		Status: Unhealthy,
-		Services: []ServiceHealth{
-			{Name: "a.service", State: "active", SubState: "running", Healthy: true},
-			{Name: "b.service", State: "failed", SubState: "failed", Healthy: false},
-			{Name: "c.service", State: "active", SubState: "running", Healthy: true},
-		},
-	}
-
-	healthyCount := 0
-	for _, svc := range r.Services {
-		if svc.Healthy {
-			healthyCount++
-		}
-	}
-	if healthyCount != 2 {
-		t.Errorf("healthy services = %d, want 2", healthyCount)
-	}
+	var c Checker = NewAggregator()
+	result, err := c.Check(context.Background())
+	if err != nil { t.Fatalf("Check: %v", err) }
+	if result.Status != Healthy { t.Errorf("Status = %d", result.Status) }
 }
