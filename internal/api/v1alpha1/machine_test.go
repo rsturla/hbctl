@@ -229,7 +229,7 @@ func TestHealth_ServiceFieldMapping(t *testing.T) {
 			result: &health.Result{
 				Status: health.Unhealthy,
 				Checks: []health.CheckResult{
-					{Name: "crio.service", Message: "running", Status: health.Healthy, Critical: true},
+					{Name: "services:crio.service", Message: "running", Status: health.Healthy, Critical: true},
 					{Name: "services:kubelet.service", Status: health.Unhealthy, Message: "failed", Critical: true},
 				},
 			},
@@ -240,13 +240,13 @@ func TestHealth_ServiceFieldMapping(t *testing.T) {
 	resp, _ := srv.Health(authn.ContextWithIdentity(context.Background(), authn.Identity{Name: "test"}), &pb.HealthRequest{})
 
 	crio := resp.Services[0]
-	if crio.Name != "crio.service" {
+	if crio.Name != "services:crio.service" {
 		t.Errorf("crio Name = %q", crio.Name)
 	}
-	if crio.State != "active" {
+	if crio.State != "running" {
 		t.Errorf("crio State = %q", crio.State)
 	}
-	if crio.SubState != "running" {
+	if crio.SubState != "" {
 		t.Errorf("crio SubState = %q", crio.SubState)
 	}
 	if !crio.Healthy {
@@ -254,7 +254,7 @@ func TestHealth_ServiceFieldMapping(t *testing.T) {
 	}
 
 	kubelet := resp.Services[1]
-	if kubelet.Name != "kubelet.service" {
+	if kubelet.Name != "services:kubelet.service" {
 		t.Errorf("kubelet Name = %q", kubelet.Name)
 	}
 	if kubelet.State != "failed" {

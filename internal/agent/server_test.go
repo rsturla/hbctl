@@ -472,10 +472,10 @@ func TestServer_HealthRPCPassesServiceDetails(t *testing.T) {
 		t.Fatalf("Services count = %d, want 2", len(resp.Services))
 	}
 
-	if resp.Services[0].Name != "crio.service" || !resp.Services[0].Healthy {
+	if resp.Services[0].Name != "services:crio.service" || !resp.Services[0].Healthy {
 		t.Errorf("crio service = %+v", resp.Services[0])
 	}
-	if resp.Services[1].Name != "kubelet.service" || resp.Services[1].Healthy {
+	if resp.Services[1].Name != "services:kubelet.service" || resp.Services[1].Healthy {
 		t.Errorf("kubelet service = %+v", resp.Services[1])
 	}
 }
