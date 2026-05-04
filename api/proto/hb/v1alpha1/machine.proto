@@ -1,0 +1,236 @@
+syntax = "proto3";
+
+package hb.v1alpha1;
+
+option go_package = "github.com/rsturla/hbctl/internal/gen/hb/v1alpha1";
+
+service MachineService {
+  // Phase 1 — Foundation
+  rpc Version(VersionRequest) returns (VersionResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Phase 2 — Diagnostics
+  rpc Logs(LogsRequest) returns (stream LogsResponse);
+  rpc Dmesg(DmesgRequest) returns (stream DmesgResponse);
+  rpc Stats(StatsRequest) returns (StatsResponse);
+  rpc ServiceStatus(ServiceStatusRequest) returns (ServiceStatusResponse);
+
+  // Phase 3 — Configuration
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc ApplyConfig(ApplyConfigRequest) returns (ApplyConfigResponse);
+
+  // Phase 4 — Upgrade & Rollback
+  rpc Upgrade(UpgradeRequest) returns (UpgradeResponse);
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
+  rpc Reboot(RebootRequest) returns (RebootResponse);
+
+  // Phase 5 — Service Control (per-resource authz)
+  rpc ServiceControl(ServiceControlRequest) returns (ServiceControlResponse);
+
+  // Bootstrap — unauthenticated, token-gated, one-time use
+  rpc BootstrapAuth(BootstrapAuthRequest) returns (BootstrapAuthResponse);
+}
+
+// --- Phase 1 messages ---
+
+message VersionRequest {}
+
+message VersionResponse {
+  string version = 1;
+  string os_image = 2;
+  string os_version = 3;
+  string go_version = 4;
+  string os_image_digest = 5;
+  string os_staged_image = 6;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  HealthStatus status = 1;
+  repeated ServiceHealth services = 2;
+}
+
+enum HealthStatus {
+  HEALTH_STATUS_UNKNOWN = 0;
+  HEALTH_STATUS_HEALTHY = 1;
+  HEALTH_STATUS_UNHEALTHY = 2;
+}
+
+message ServiceHealth {
+  string name = 1;
+  string state = 2;
+  string sub_state = 3;
+  bool healthy = 4;
+}
+
+// --- Phase 2 messages ---
+
+message LogsRequest {
+  bool follow = 1;
+  string unit = 2;
+  int32 lines = 3;
+}
+
+message LogsResponse {
+  string timestamp = 1;
+  string unit = 2;
+  string message = 3;
+  string priority = 4;
+}
+
+message DmesgRequest {
+  bool follow = 1;
+  int32 lines = 2;
+}
+
+message DmesgResponse {
+  string timestamp = 1;
+  string facility = 2;
+  string priority = 3;
+  string message = 4;
+}
+
+message StatsRequest {}
+
+message StatsResponse {
+  MemoryStats memory = 1;
+  CPUStats cpu = 2;
+  repeated DiskStats disks = 3;
+  LoadStats load = 4;
+}
+
+message MemoryStats {
+  uint64 total_bytes = 1;
+  uint64 available_bytes = 2;
+  uint64 used_bytes = 3;
+}
+
+message CPUStats {
+  uint32 count = 1;
+  double usage_percent = 2;
+}
+
+message DiskStats {
+  string mount_point = 1;
+  string filesystem = 2;
+  uint64 total_bytes = 3;
+  uint64 available_bytes = 4;
+  uint64 used_bytes = 5;
+}
+
+message LoadStats {
+  double load1 = 1;
+  double load5 = 2;
+  double load15 = 3;
+}
+
+message ServiceStatusRequest {
+  string name = 1;
+}
+
+message ServiceStatusResponse {
+  string name = 1;
+  string description = 2;
+  string load_state = 3;
+  string active_state = 4;
+  string sub_state = 5;
+  string unit_file_state = 6;
+  uint32 main_pid = 7;
+  uint64 memory_bytes = 8;
+  string active_enter_timestamp = 9;
+}
+
+// --- Phase 3 messages ---
+
+message GetConfigRequest {}
+
+message GetConfigResponse {
+  MachineConfig config = 1;
+}
+
+message ApplyConfigRequest {
+  MachineConfig config = 1;
+}
+
+message ApplyConfigResponse {
+  repeated string warnings = 1;
+  bool reboot_required = 2;
+}
+
+message MachineConfig {
+  NetworkConfig network = 1;
+  string hostname = 2;
+  repeated string kernel_args = 3;
+  repeated string dns_servers = 4;
+  repeated string ntp_servers = 5;
+}
+
+message NetworkConfig {
+  repeated NetworkInterface interfaces = 1;
+}
+
+message NetworkInterface {
+  string name = 1;
+  bool dhcp = 2;
+  repeated string addresses = 3;
+  string gateway = 4;
+  uint32 mtu = 5;
+}
+
+// --- Phase 4 messages ---
+
+message UpgradeRequest {
+  string image = 1;
+}
+
+message UpgradeResponse {
+  string current_image = 1;
+  string current_digest = 2;
+  string staged_image = 3;
+  bool reboot_required = 4;
+}
+
+message RollbackRequest {}
+
+message RollbackResponse {
+  string current_image = 1;
+  string rollback_image = 2;
+  bool reboot_required = 3;
+}
+
+message RebootRequest {}
+
+message RebootResponse {}
+
+// --- Service Control messages ---
+
+message ServiceControlRequest {
+  string name = 1;
+  ServiceAction action = 2;
+}
+
+enum ServiceAction {
+  SERVICE_ACTION_START = 0;
+  SERVICE_ACTION_STOP = 1;
+  SERVICE_ACTION_RESTART = 2;
+}
+
+message ServiceControlResponse {
+  string name = 1;
+  string active_state = 2;
+  string sub_state = 3;
+}
+
+// --- Bootstrap messages ---
+
+message BootstrapAuthRequest {
+  string token = 1;
+  bytes csr = 2;
+}
+
+message BootstrapAuthResponse {
+  bytes ca_cert = 1;
+  bytes client_cert = 2;
+  string ca_fingerprint = 3;
+}
