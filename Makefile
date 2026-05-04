@@ -1,9 +1,53 @@
-GO ?= go
-PROTOC ?= protoc
-PROTOC_GEN_GO ?= $(shell go env GOPATH)/bin/protoc-gen-go
-PROTOC_GEN_GO_GRPC ?= $(shell go env GOPATH)/bin/protoc-gen-go-grpc
+GO       ?= go
+PROTOC   ?= protoc
+LINT     ?= golangci-lint
+VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS  := -s -w -X main.version=$(VERSION)
 
-.PHONY: proto build test test-race lint clean
+PROTOC_GEN_GO      ?= $(shell $(GO) env GOPATH)/bin/protoc-gen-go
+PROTOC_GEN_GO_GRPC ?= $(shell $(GO) env GOPATH)/bin/protoc-gen-go-grpc
+
+FUZZ_TIME ?= 10s
+
+.PHONY: all build test test-race test-count lint fuzz proto proto-check tools check clean
+
+all: lint test build
+
+# ── Build ──
+
+build:
+	CGO_ENABLED=0 $(GO) build -ldflags='$(LDFLAGS)' -o bin/hb-agent ./cmd/hb-agent
+	CGO_ENABLED=0 $(GO) build -ldflags='$(LDFLAGS)' -o bin/hbctl ./cmd/hbctl
+
+# ── Test ──
+
+test:
+	$(GO) test ./...
+
+test-race:
+	$(GO) test -race -count=1 ./...
+
+test-count:
+	@$(GO) test -v ./... 2>&1 | grep -cE '^\s*--- (PASS|FAIL)'
+
+# ── Fuzz ──
+
+fuzz:
+	@echo "fuzzing all targets for $(FUZZ_TIME) each"
+	@failed=0; \
+	for target in $$(grep -rn '^func Fuzz' --include='*_test.go' . | sed 's/.*:func \(Fuzz[a-zA-Z_]*\).*/\1/' | sort -u); do \
+		pkg=$$(grep -rl "func $$target" --include='*_test.go' . | head -1 | xargs dirname); \
+		echo "  $$target ($$pkg)"; \
+		$(GO) test -fuzz=$$target -fuzztime=$(FUZZ_TIME) $$pkg > /dev/null 2>&1 || { echo "  FAIL: $$target"; failed=1; }; \
+	done; \
+	exit $$failed
+
+# ── Lint ──
+
+lint:
+	$(LINT) run ./...
+
+# ── Proto ──
 
 proto:
 	$(PROTOC) \
@@ -14,18 +58,18 @@ proto:
 		-I api/proto \
 		api/proto/hb/v1alpha1/machine.proto
 
-build:
-	CGO_ENABLED=1 $(GO) build -ldflags='-s -w' -o bin/hb-agent ./cmd/hb-agent
-	CGO_ENABLED=0 $(GO) build -ldflags='-s -w' -o bin/hbctl ./cmd/hbctl
+proto-check: proto
+	@git diff --exit-code internal/gen/ || { echo "error: proto generated code is out of date — run 'make proto'"; exit 1; }
 
-test:
-	$(GO) test ./...
+# ── Tools ──
 
-test-race:
-	$(GO) test -race -count=1 ./...
+tools:
+	$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	$(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-lint:
-	golangci-lint run ./...
+# ── CI entrypoint ──
+
+check: lint test-race build
 
 clean:
 	rm -rf bin/
