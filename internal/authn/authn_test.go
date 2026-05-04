@@ -43,7 +43,7 @@ func TestRegistry_DuplicateRegister(t *testing.T) {
 	factory := func(cfg json.RawMessage) (Authenticator, error) {
 		return &fakeAuth{name: "dup"}, nil
 	}
-	r.Register("dup", factory)
+	_ = r.Register("dup", factory)
 
 	err := r.Register("dup", factory)
 	if err == nil {
@@ -65,8 +65,8 @@ func TestRegistry_Names(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	r.Register("a", func(json.RawMessage) (Authenticator, error) { return &fakeAuth{}, nil })
-	r.Register("b", func(json.RawMessage) (Authenticator, error) { return &fakeAuth{}, nil })
+	_ = r.Register("a", func(json.RawMessage) (Authenticator, error) { return &fakeAuth{}, nil })
+	_ = r.Register("b", func(json.RawMessage) (Authenticator, error) { return &fakeAuth{}, nil })
 
 	names := r.Names()
 	if len(names) != 2 {
@@ -110,7 +110,7 @@ func TestRegistry_FactoryError(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	r.Register("broken", func(json.RawMessage) (Authenticator, error) {
+	_ = r.Register("broken", func(json.RawMessage) (Authenticator, error) {
 		return nil, fmt.Errorf("config invalid")
 	})
 

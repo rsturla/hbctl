@@ -31,42 +31,42 @@ func authnCtx(name string, groups ...string) context.Context {
 
 func TestNewUnary_PanicsWithoutAction(t *testing.T) {
 	t.Parallel()
-	defer func() { recover() }()
+	defer func() { _ = recover() }()
 	NewUnary("", func(_ *string) authz.Resource { return authz.ThisNode() }, func(_ context.Context, _ *string) (*string, error) { return nil, nil })
 	t.Error("expected panic")
 }
 
 func TestNewUnary_PanicsWithoutResource(t *testing.T) {
 	t.Parallel()
-	defer func() { recover() }()
+	defer func() { _ = recover() }()
 	NewUnary[*string, *string]("test", nil, func(_ context.Context, _ *string) (*string, error) { return nil, nil })
 	t.Error("expected panic")
 }
 
 func TestNewUnary_PanicsWithoutFn(t *testing.T) {
 	t.Parallel()
-	defer func() { recover() }()
+	defer func() { _ = recover() }()
 	NewUnary[*string, *string]("test", func(_ *string) authz.Resource { return authz.ThisNode() }, nil)
 	t.Error("expected panic")
 }
 
 func TestNewServerStream_PanicsWithoutAction(t *testing.T) {
 	t.Parallel()
-	defer func() { recover() }()
+	defer func() { _ = recover() }()
 	NewServerStream("", func(_ *string) authz.Resource { return authz.ThisNode() }, func(_ context.Context, _ *string, _ func(*string) error) error { return nil })
 	t.Error("expected panic")
 }
 
 func TestNewServerStream_PanicsWithoutResource(t *testing.T) {
 	t.Parallel()
-	defer func() { recover() }()
+	defer func() { _ = recover() }()
 	NewServerStream[*string, *string]("test", nil, func(_ context.Context, _ *string, _ func(*string) error) error { return nil })
 	t.Error("expected panic")
 }
 
 func TestNewServerStream_PanicsWithoutFn(t *testing.T) {
 	t.Parallel()
-	defer func() { recover() }()
+	defer func() { _ = recover() }()
 	NewServerStream[*string, *string]("test", func(_ *string) authz.Resource { return authz.ThisNode() }, nil)
 	t.Error("expected panic")
 }
@@ -170,7 +170,7 @@ func TestExecute_ResourcePassedToAuthz(t *testing.T) {
 		func(_ context.Context, _ *string) (*string, error) { return strPtr("ok"), nil },
 	)
 
-	h.Execute(authnCtx("admin"), az, strPtr("crio.service"))
+	_, _ = h.Execute(authnCtx("admin"), az, strPtr("crio.service"))
 
 	if az.lastResource.Type != authz.ResourceService {
 		t.Errorf("resource type = %q, want Service", az.lastResource.Type)
@@ -264,7 +264,7 @@ func TestNewReadOnly_ResourceIsThisNode(t *testing.T) {
 		return strPtr("ok"), nil
 	})
 
-	h.Execute(authnCtx("user"), az, strPtr(""))
+	_, _ = h.Execute(authnCtx("user"), az, strPtr(""))
 
 	if az.lastResource.Type != authz.ResourceNode || az.lastResource.ID != "*" {
 		t.Errorf("ReadOnly resource = %s, want Node::*", az.lastResource)

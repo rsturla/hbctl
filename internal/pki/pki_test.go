@@ -190,7 +190,7 @@ func TestLoadServerTLS_CorruptCA(t *testing.T) {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
-	os.WriteFile(filepath.Join(dir, caFile), []byte("not a cert"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, caFile), []byte("not a cert"), 0o600)
 
 	_, err := LoadServerTLS(dir)
 	if err == nil {
@@ -204,7 +204,7 @@ func TestLoadServerTLS_CorruptServerCert(t *testing.T) {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
-	os.WriteFile(filepath.Join(dir, serverCertFile), []byte("garbage"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, serverCertFile), []byte("garbage"), 0o600)
 
 	_, err := LoadServerTLS(dir)
 	if err == nil {
@@ -297,7 +297,7 @@ func TestGenerateClientCert_CorruptCAKey(t *testing.T) {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
-	os.WriteFile(filepath.Join(dir, caKeyFile), []byte("not a key"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, caKeyFile), []byte("not a key"), 0o600)
 
 	_, _, err := GenerateClientCert(dir, "test")
 	if err == nil {
@@ -313,7 +313,7 @@ func TestGenerateClientCert_CorruptCACert(t *testing.T) {
 
 	// Write valid PEM wrapper but garbage DER inside
 	badCert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("garbage")})
-	os.WriteFile(filepath.Join(dir, caFile), badCert, 0o600)
+	_ = os.WriteFile(filepath.Join(dir, caFile), badCert, 0o600)
 
 	_, _, err := GenerateClientCert(dir, "test")
 	if err == nil {
@@ -424,7 +424,7 @@ func FuzzWritePEM(f *testing.F) {
 			return
 		}
 		for _, c := range pemType {
-			if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ') {
+			if (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != ' ' {
 				return
 			}
 		}
@@ -576,7 +576,7 @@ func TestSignCSR(t *testing.T) {
 
 func TestSignCSR_InvalidCSR(t *testing.T) {
 	dir := t.TempDir()
-	Bootstrap(dir)
+	_ = Bootstrap(dir)
 
 	_, err := SignCSR(dir, []byte("garbage"))
 	if err == nil {

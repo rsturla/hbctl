@@ -141,7 +141,7 @@ func applyHostname(name string) error {
 func applyDNS(servers []string) error {
 	var b strings.Builder
 	for _, s := range servers {
-		b.WriteString(fmt.Sprintf("nameserver %s\n", s))
+		_, _ = fmt.Fprintf(&b, "nameserver %s\n", s)
 	}
 	return os.WriteFile("/etc/resolv.conf", []byte(b.String()), 0o644)
 }

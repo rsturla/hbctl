@@ -92,7 +92,7 @@ func readMemInfo() (*MemoryStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var totalKB, availableKB uint64
 	scanner := bufio.NewScanner(f)
@@ -153,7 +153,7 @@ func readCPUStats() (*CPUStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

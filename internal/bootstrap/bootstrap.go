@@ -132,8 +132,8 @@ func (m *Manager) Bootstrap(token string, csrPEM []byte, peerAddr string) (*Resu
 
 func (m *Manager) consume(reason string) {
 	path := filepath.Join(m.tlsDir, consumedFile)
-	os.WriteFile(path, []byte(reason+"\n"), 0o600)
-	os.Remove(filepath.Join(m.tlsDir, tokenHashFile))
+	if err := os.WriteFile(path, []byte(reason+"\n"), 0o600); err != nil { slog.Error("failed to write consumed marker", "error", err) }
+	_ = os.Remove(filepath.Join(m.tlsDir, tokenHashFile))
 	slog.Info("bootstrap token consumed", "reason", reason)
 }
 

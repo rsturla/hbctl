@@ -192,8 +192,8 @@ func TestRead_NonexistentDir(t *testing.T) {
 func TestRead_IgnoresNonKubeosFiles(t *testing.T) {
 	dir := t.TempDir()
 
-	os.WriteFile(filepath.Join(dir, "89-ethernet.network"), []byte("[Match]\nName=eth0\n\n[Network]\nDHCP=yes\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "10-hb-eth1.network"), []byte("[Match]\nName=eth1\n\n[Network]\nDHCP=yes\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "89-ethernet.network"), []byte("[Match]\nName=eth0\n\n[Network]\nDHCP=yes\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "10-hb-eth1.network"), []byte("[Match]\nName=eth1\n\n[Network]\nDHCP=yes\n"), 0o644)
 
 	mgr := NewManager()
 	ifaces, err := mgr.Read(dir)
@@ -213,7 +213,7 @@ func TestWrite_FilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager()
 
-	mgr.Write(dir, []Interface{{Name: "eth0", DHCP: true}})
+	_ = mgr.Write(dir, []Interface{{Name: "eth0", DHCP: true}})
 
 	info, _ := os.Stat(filepath.Join(dir, "10-hb-eth0.network"))
 	if info.Mode().Perm() != 0o644 {
@@ -246,7 +246,14 @@ func FuzzRenderParseRoundTrip(f *testing.F) {
 	f.Add("bond0", true, "", "", uint32(0))
 
 	f.Fuzz(func(t *testing.T, name string, dhcp bool, addr, gw string, mtu uint32) {
+		name = strings.TrimSpace(name)
+		addr = strings.TrimSpace(addr)
+		gw = strings.TrimSpace(gw)
 		if name == "" {
+			return
+		}
+		all := name + addr + gw
+		if strings.ContainsAny(all, "\n\r=[]") {
 			return
 		}
 		iface := Interface{

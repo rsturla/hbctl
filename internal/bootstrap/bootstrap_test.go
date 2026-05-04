@@ -32,7 +32,7 @@ func setupBootstrap(t *testing.T) (string, string) {
 func generateToken(t *testing.T) string {
 	t.Helper()
 	b := make([]byte, 32)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
@@ -125,7 +125,7 @@ func TestBootstrap_TokenHashDeleted(t *testing.T) {
 	dir, token := setupBootstrap(t)
 	mgr := NewManager(dir)
 
-	mgr.Bootstrap(token, generateCSR(t), "10.0.0.1:54321")
+	_, _ = mgr.Bootstrap(token, generateCSR(t), "10.0.0.1:54321")
 
 	if _, err := os.Stat(filepath.Join(dir, tokenHashFile)); !os.IsNotExist(err) {
 		t.Error("token hash file should be deleted after consumption")
@@ -169,7 +169,7 @@ func TestBootstrap_RateLimiting(t *testing.T) {
 	csr := generateCSR(t)
 
 	for i := 0; i < maxAttempts; i++ {
-		mgr.Bootstrap("wrong", csr, "10.0.0.1:54321")
+		_, _ = mgr.Bootstrap("wrong", csr, "10.0.0.1:54321")
 	}
 
 	if mgr.Enabled() {
@@ -188,7 +188,7 @@ func TestBootstrap_RateLimitDeletesHash(t *testing.T) {
 	csr := generateCSR(t)
 
 	for i := 0; i < maxAttempts; i++ {
-		mgr.Bootstrap("wrong", csr, "10.0.0.1:54321")
+		_, _ = mgr.Bootstrap("wrong", csr, "10.0.0.1:54321")
 	}
 
 	if _, err := os.Stat(filepath.Join(dir, tokenHashFile)); !os.IsNotExist(err) {
@@ -198,7 +198,7 @@ func TestBootstrap_RateLimitDeletesHash(t *testing.T) {
 
 func TestBootstrap_NotEnabled(t *testing.T) {
 	dir := t.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 	mgr := NewManager(dir)
 
 	if mgr.Enabled() {
@@ -215,7 +215,7 @@ func TestBootstrap_AlreadyConsumed(t *testing.T) {
 	dir, token := setupBootstrap(t)
 	mgr := NewManager(dir)
 
-	mgr.Bootstrap(token, generateCSR(t), "10.0.0.1:54321")
+	_, _ = mgr.Bootstrap(token, generateCSR(t), "10.0.0.1:54321")
 
 	mgr2 := NewManager(dir)
 	if mgr2.Enabled() {
@@ -252,7 +252,7 @@ func TestBootstrap_CorrectTokenAfterFailedAttempt(t *testing.T) {
 	mgr := NewManager(dir)
 	csr := generateCSR(t)
 
-	mgr.Bootstrap("wrong", csr, "10.0.0.1:54321")
+	_, _ = mgr.Bootstrap("wrong", csr, "10.0.0.1:54321")
 
 	result, err := mgr.Bootstrap(token, csr, "10.0.0.1:54321")
 	if err != nil {
@@ -265,7 +265,7 @@ func TestBootstrap_CorrectTokenAfterFailedAttempt(t *testing.T) {
 
 func TestCAFingerprint(t *testing.T) {
 	dir := t.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 
 	fp, err := CAFingerprint(dir)
 	if err != nil {
@@ -287,7 +287,7 @@ func TestCAFingerprint(t *testing.T) {
 
 func TestServerFingerprint(t *testing.T) {
 	dir := t.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 
 	fp, err := ServerFingerprint(dir)
 	if err != nil {
@@ -345,10 +345,10 @@ func FuzzBootstrap_Token(f *testing.F) {
 	f.Add("Bearer token")
 
 	dir := f.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 
 	realToken := "the-real-token-for-fuzz-testing"
-	WriteTokenHash(dir, realToken)
+	_ = WriteTokenHash(dir, realToken)
 
 	csrPEM, _, _ := pki.GenerateCSR("fuzz-client")
 
@@ -380,11 +380,11 @@ func FuzzBootstrap_CSR(f *testing.F) {
 	f.Add([]byte("-----BEGIN CERTIFICATE REQUEST-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg==\n-----END CERTIFICATE REQUEST-----"))
 
 	dir := f.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 
 	f.Fuzz(func(t *testing.T, csr []byte) {
 		token := "fuzz-token-" + t.Name()
-		WriteTokenHash(dir, token)
+		_ = WriteTokenHash(dir, token)
 
 		mgr := NewManager(dir)
 		result, err := mgr.Bootstrap(token, csr, "fuzz:0")

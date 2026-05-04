@@ -90,7 +90,7 @@ func newTestServer(t *testing.T, checker health.Checker, br bootc.StatusReader) 
 		t.Fatalf("listen: %v", err)
 	}
 
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 
 	return &testServer{
 		srv: srv,
@@ -513,7 +513,7 @@ func TestListen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	addr := lis.Addr().String()
 	if addr == "" {
@@ -555,7 +555,7 @@ func BenchmarkRPC_Version(b *testing.B) {
 	}})
 
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 	defer srv.GracefulStop()
 
 	certPEM, keyPEM, _ := pki.GenerateClientCert(dir, "bench-client")
@@ -579,7 +579,7 @@ func BenchmarkRPC_Version(b *testing.B) {
 	client := pb.NewMachineServiceClient(conn)
 
 	// Warm up connection
-	client.Version(context.Background(), &pb.VersionRequest{})
+	_, _ = client.Version(context.Background(), &pb.VersionRequest{})
 
 	b.ResetTimer()
 	for b.Loop() {

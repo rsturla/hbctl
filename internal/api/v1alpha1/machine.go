@@ -8,7 +8,6 @@ import (
 	pb "github.com/rsturla/hbctl/internal/gen/hb/v1alpha1"
 	"github.com/rsturla/hbctl/internal/authz"
 	"github.com/rsturla/hbctl/internal/bootstrap"
-	healthpkg "github.com/rsturla/hbctl/internal/health"
 	"github.com/rsturla/hbctl/internal/validate"
 	"github.com/rsturla/hbctl/internal/handler"
 	"github.com/rsturla/hbctl/internal/health"
@@ -94,7 +93,7 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 				resp.Services = append(resp.Services, &pb.ServiceHealth{
 					Name:    check.Name,
 					State:   check.Message,
-					Healthy: check.Status == healthpkg.Healthy,
+					Healthy: check.Status == health.Healthy,
 				})
 			}
 			return resp, nil

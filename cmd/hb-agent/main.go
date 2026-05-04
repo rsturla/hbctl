@@ -34,10 +34,10 @@ var version = "0.1.0-dev"
 
 func newPluginRegistry() *plugin.Registry {
 	r := plugin.NewRegistry()
-	r.Register("services", func(cfg json.RawMessage) (plugin.Plugin, error) { return services.New(cfg) })
-	r.Register("diagnostics", func(cfg json.RawMessage) (plugin.Plugin, error) { return diagnostics.New(cfg) })
-	r.Register("lifecycle", func(cfg json.RawMessage) (plugin.Plugin, error) { return lifecycle.New(cfg) })
-	r.Register("config", func(cfg json.RawMessage) (plugin.Plugin, error) { return configplugin.New(cfg) })
+	must(r.Register("services", func(cfg json.RawMessage) (plugin.Plugin, error) { return services.New(cfg) }))
+	must(r.Register("diagnostics", func(cfg json.RawMessage) (plugin.Plugin, error) { return diagnostics.New(cfg) }))
+	must(r.Register("lifecycle", func(cfg json.RawMessage) (plugin.Plugin, error) { return lifecycle.New(cfg) }))
+	must(r.Register("config", func(cfg json.RawMessage) (plugin.Plugin, error) { return configplugin.New(cfg) }))
 	return r
 }
 
@@ -176,8 +176,8 @@ func buildDeps(p plugin.Plugin, deps *apiv1.Deps) {
 
 func createAuthenticator(cfg *config.Config) (authn.Authenticator, error) {
 	registry := authn.NewRegistry()
-	registry.Register("mtls", authnmtls.New)
-	registry.Register("token", authntoken.New)
+	must(registry.Register("mtls", authnmtls.New))
+	must(registry.Register("token", authntoken.New))
 
 	var cfgJSON json.RawMessage
 	if cfg.AuthConfig != "" {
@@ -189,8 +189,8 @@ func createAuthenticator(cfg *config.Config) (authn.Authenticator, error) {
 
 func createAuthorizer(cfg *config.Config) (authz.Authorizer, error) {
 	registry := authz.NewRegistry()
-	registry.Register("allow-all", authz.NewAllowAll)
-	registry.Register("cedar", authzcedar.New)
+	must(registry.Register("allow-all", authz.NewAllowAll))
+	must(registry.Register("cedar", authzcedar.New))
 
 	var cfgJSON json.RawMessage
 	if cfg.AuthzConfig != "" {
@@ -222,6 +222,12 @@ func watchdogLoop(ctx context.Context, checker health.Checker, interval time.Dur
 				slog.Warn("health check unhealthy, skipping watchdog ping")
 			}
 		}
+	}
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
 	}
 }
 
