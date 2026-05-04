@@ -134,7 +134,7 @@ func TestWrite_EmptyArgs_RemovesFile(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager()
 
-	mgr.Write(dir, []string{"fips=1"})
+	_ = mgr.Write(dir, []string{"fips=1"})
 
 	if err := mgr.Write(dir, nil); err != nil {
 		t.Fatalf("Write empty: %v", err)

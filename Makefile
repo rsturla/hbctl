@@ -33,13 +33,18 @@ test-count:
 # ── Fuzz ──
 
 fuzz:
-	@echo "fuzzing all targets for $(FUZZ_TIME) each"
-	@failed=0; \
-	for target in $$(grep -rn '^func Fuzz' --include='*_test.go' . | sed 's/.*:func \(Fuzz[a-zA-Z_]*\).*/\1/' | sort -u); do \
-		pkg=$$(grep -rl "func $$target" --include='*_test.go' . | head -1 | xargs dirname); \
-		echo "  $$target ($$pkg)"; \
-		$(GO) test -fuzz=$$target -fuzztime=$(FUZZ_TIME) $$pkg > /dev/null 2>&1 || { echo "  FAIL: $$target"; failed=1; }; \
+	@echo "discovering fuzz targets..."
+	@failed=0; count=0; \
+	for pkg in $$($(GO) list ./...); do \
+		targets=$$($(GO) test -list '^Fuzz' $$pkg 2>/dev/null | grep '^Fuzz' || true); \
+		for target in $$targets; do \
+			count=$$((count + 1)); \
+			echo "  [$$count] $$target ($$pkg) $(FUZZ_TIME)"; \
+			output=$$($(GO) test -fuzz=^$$target$$ -fuzztime=$(FUZZ_TIME) $$pkg 2>&1); \
+			if [ $$? -ne 0 ]; then echo "  FAIL: $$target ($$pkg)"; echo "$$output" | tail -20; failed=1; fi; \
+		done; \
 	done; \
+	echo "$$count fuzz targets completed"; \
 	exit $$failed
 
 # ── Lint ──

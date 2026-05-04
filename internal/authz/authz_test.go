@@ -23,7 +23,7 @@ func TestRegistry_RegisterAndCreate(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	r.Register("test", func(json.RawMessage) (Authorizer, error) {
+	_ = r.Register("test", func(json.RawMessage) (Authorizer, error) {
 		return &fakeAuthorizer{decision: Allow}, nil
 	})
 
@@ -40,7 +40,7 @@ func TestRegistry_DuplicateRegister(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	r.Register("dup", func(json.RawMessage) (Authorizer, error) { return &fakeAuthorizer{}, nil })
+	_ = r.Register("dup", func(json.RawMessage) (Authorizer, error) { return &fakeAuthorizer{}, nil })
 	err := r.Register("dup", func(json.RawMessage) (Authorizer, error) { return &fakeAuthorizer{}, nil })
 	if err == nil {
 		t.Error("expected error for duplicate")
@@ -85,7 +85,7 @@ func TestRegistry_FactoryError(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	r.Register("broken", func(json.RawMessage) (Authorizer, error) {
+	_ = r.Register("broken", func(json.RawMessage) (Authorizer, error) {
 		return nil, fmt.Errorf("bad config")
 	})
 

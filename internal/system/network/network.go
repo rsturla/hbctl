@@ -89,7 +89,7 @@ func renderNetworkFile(iface Interface) string {
 	var b strings.Builder
 
 	b.WriteString("[Match]\n")
-	b.WriteString(fmt.Sprintf("Name=%s\n", iface.Name))
+	_, _ = fmt.Fprintf(&b, "Name=%s\n", iface.Name)
 	b.WriteString("\n[Network]\n")
 
 	if iface.DHCP {
@@ -97,15 +97,15 @@ func renderNetworkFile(iface Interface) string {
 	} else {
 		b.WriteString("DHCP=no\n")
 		for _, addr := range iface.Addresses {
-			b.WriteString(fmt.Sprintf("Address=%s\n", addr))
+			_, _ = fmt.Fprintf(&b, "Address=%s\n", addr)
 		}
 		if iface.Gateway != "" {
-			b.WriteString(fmt.Sprintf("Gateway=%s\n", iface.Gateway))
+			_, _ = fmt.Fprintf(&b, "Gateway=%s\n", iface.Gateway)
 		}
 	}
 
 	if iface.MTU > 0 {
-		b.WriteString(fmt.Sprintf("\n[Link]\nMTUBytes=%d\n", iface.MTU))
+		_, _ = fmt.Fprintf(&b, "\n[Link]\nMTUBytes=%d\n", iface.MTU)
 	}
 
 	return b.String()
@@ -119,6 +119,7 @@ func parseNetworkFile(content string) Interface {
 		if !ok {
 			continue
 		}
+		v = strings.TrimSpace(v)
 		switch k {
 		case "Name":
 			iface.Name = v
@@ -129,7 +130,7 @@ func parseNetworkFile(content string) Interface {
 		case "Gateway":
 			iface.Gateway = v
 		case "MTUBytes":
-			fmt.Sscanf(v, "%d", &iface.MTU)
+			_, _ = fmt.Sscanf(v, "%d", &iface.MTU)
 		}
 	}
 	return iface

@@ -22,7 +22,6 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-var cliVersion = "0.1.0-dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -113,7 +112,7 @@ func run(endpoint, tlsDir string, fn cmdFunc) {
 	if err != nil {
 		fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -128,7 +127,7 @@ func runWithArgs(endpoint, tlsDir string, args []string, fn cmdFuncArgs) {
 	if err != nil {
 		fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -145,19 +144,19 @@ func cmdVersion(ctx context.Context, c pb.MachineServiceClient) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "Agent Version:\t%s\n", resp.Version)
-	fmt.Fprintf(w, "Go Version:\t%s\n", resp.GoVersion)
+	_, _ = fmt.Fprintf(w, "Agent Version:\t%s\n", resp.Version)
+	_, _ = fmt.Fprintf(w, "Go Version:\t%s\n", resp.GoVersion)
 	if resp.OsImage != "" {
-		fmt.Fprintf(w, "OS Image:\t%s\n", resp.OsImage)
+		_, _ = fmt.Fprintf(w, "OS Image:\t%s\n", resp.OsImage)
 	}
 	if resp.OsVersion != "" {
-		fmt.Fprintf(w, "OS Version:\t%s\n", resp.OsVersion)
+		_, _ = fmt.Fprintf(w, "OS Version:\t%s\n", resp.OsVersion)
 	}
 	if resp.OsImageDigest != "" {
-		fmt.Fprintf(w, "Image Digest:\t%s\n", resp.OsImageDigest)
+		_, _ = fmt.Fprintf(w, "Image Digest:\t%s\n", resp.OsImageDigest)
 	}
 	if resp.OsStagedImage != "" {
-		fmt.Fprintf(w, "Staged Image:\t%s\n", resp.OsStagedImage)
+		_, _ = fmt.Fprintf(w, "Staged Image:\t%s\n", resp.OsStagedImage)
 	}
 	return w.Flush()
 }
@@ -179,15 +178,15 @@ func cmdHealth(ctx context.Context, c pb.MachineServiceClient) error {
 
 	if len(resp.Services) > 0 {
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "SERVICE\tSTATE\tSUBSTATE\tHEALTHY\n")
+		_, _ = fmt.Fprintf(w, "SERVICE\tSTATE\tSUBSTATE\tHEALTHY\n")
 		for _, svc := range resp.Services {
 			healthy := "no"
 			if svc.Healthy {
 				healthy = "yes"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", svc.Name, svc.State, svc.SubState, healthy)
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", svc.Name, svc.State, svc.SubState, healthy)
 		}
-		w.Flush()
+		_ = w.Flush()
 	}
 	return nil
 }
@@ -201,27 +200,27 @@ func cmdStats(ctx context.Context, c pb.MachineServiceClient) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	if resp.Memory != nil {
-		fmt.Fprintf(w, "Memory Total:\t%s\n", humanBytes(resp.Memory.TotalBytes))
-		fmt.Fprintf(w, "Memory Available:\t%s\n", humanBytes(resp.Memory.AvailableBytes))
-		fmt.Fprintf(w, "Memory Used:\t%s\n", humanBytes(resp.Memory.UsedBytes))
+		_, _ = fmt.Fprintf(w, "Memory Total:\t%s\n", humanBytes(resp.Memory.TotalBytes))
+		_, _ = fmt.Fprintf(w, "Memory Available:\t%s\n", humanBytes(resp.Memory.AvailableBytes))
+		_, _ = fmt.Fprintf(w, "Memory Used:\t%s\n", humanBytes(resp.Memory.UsedBytes))
 	}
 	if resp.Cpu != nil {
-		fmt.Fprintf(w, "CPU Count:\t%d\n", resp.Cpu.Count)
-		fmt.Fprintf(w, "CPU Usage:\t%.1f%%\n", resp.Cpu.UsagePercent)
+		_, _ = fmt.Fprintf(w, "CPU Count:\t%d\n", resp.Cpu.Count)
+		_, _ = fmt.Fprintf(w, "CPU Usage:\t%.1f%%\n", resp.Cpu.UsagePercent)
 	}
 	if resp.Load != nil {
-		fmt.Fprintf(w, "Load:\t%.2f %.2f %.2f\n", resp.Load.Load1, resp.Load.Load5, resp.Load.Load15)
+		_, _ = fmt.Fprintf(w, "Load:\t%.2f %.2f %.2f\n", resp.Load.Load1, resp.Load.Load5, resp.Load.Load15)
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	if len(resp.Disks) > 0 {
 		fmt.Println()
 		dw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(dw, "MOUNT\tTOTAL\tAVAILABLE\tUSED\n")
+		_, _ = fmt.Fprintf(dw, "MOUNT\tTOTAL\tAVAILABLE\tUSED\n")
 		for _, d := range resp.Disks {
-			fmt.Fprintf(dw, "%s\t%s\t%s\t%s\n", d.MountPoint, humanBytes(d.TotalBytes), humanBytes(d.AvailableBytes), humanBytes(d.UsedBytes))
+			_, _ = fmt.Fprintf(dw, "%s\t%s\t%s\t%s\n", d.MountPoint, humanBytes(d.TotalBytes), humanBytes(d.AvailableBytes), humanBytes(d.UsedBytes))
 		}
-		dw.Flush()
+		_ = dw.Flush()
 	}
 	return nil
 }
@@ -231,7 +230,7 @@ func cmdLogs(ctx context.Context, c pb.MachineServiceClient, args []string) erro
 	follow := fs.Bool("f", false, "follow log output")
 	unit := fs.String("u", "", "filter by systemd unit")
 	lines := fs.Int("n", 100, "number of lines")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *follow {
 		ctx = context.WithoutCancel(ctx)
@@ -266,7 +265,7 @@ func cmdDmesg(ctx context.Context, c pb.MachineServiceClient, args []string) err
 	fs := flag.NewFlagSet("dmesg", flag.ExitOnError)
 	follow := fs.Bool("f", false, "follow output")
 	lines := fs.Int("n", 100, "number of lines")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *follow {
 		ctx = context.WithoutCancel(ctx)
@@ -303,19 +302,19 @@ func cmdServiceStatus(ctx context.Context, c pb.MachineServiceClient, args []str
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "Name:\t%s\n", resp.Name)
-	fmt.Fprintf(w, "Description:\t%s\n", resp.Description)
-	fmt.Fprintf(w, "Load State:\t%s\n", resp.LoadState)
-	fmt.Fprintf(w, "Active State:\t%s\n", resp.ActiveState)
-	fmt.Fprintf(w, "Sub State:\t%s\n", resp.SubState)
+	_, _ = fmt.Fprintf(w, "Name:\t%s\n", resp.Name)
+	_, _ = fmt.Fprintf(w, "Description:\t%s\n", resp.Description)
+	_, _ = fmt.Fprintf(w, "Load State:\t%s\n", resp.LoadState)
+	_, _ = fmt.Fprintf(w, "Active State:\t%s\n", resp.ActiveState)
+	_, _ = fmt.Fprintf(w, "Sub State:\t%s\n", resp.SubState)
 	if resp.UnitFileState != "" {
-		fmt.Fprintf(w, "Unit File State:\t%s\n", resp.UnitFileState)
+		_, _ = fmt.Fprintf(w, "Unit File State:\t%s\n", resp.UnitFileState)
 	}
 	if resp.MainPid > 0 {
-		fmt.Fprintf(w, "Main PID:\t%d\n", resp.MainPid)
+		_, _ = fmt.Fprintf(w, "Main PID:\t%d\n", resp.MainPid)
 	}
 	if resp.MemoryBytes > 0 {
-		fmt.Fprintf(w, "Memory:\t%s\n", humanBytes(resp.MemoryBytes))
+		_, _ = fmt.Fprintf(w, "Memory:\t%s\n", humanBytes(resp.MemoryBytes))
 	}
 	return w.Flush()
 }
@@ -334,23 +333,23 @@ func cmdConfigGet(ctx context.Context, c pb.MachineServiceClient) error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if cfg.Hostname != "" {
-		fmt.Fprintf(w, "Hostname:\t%s\n", cfg.Hostname)
+		_, _ = fmt.Fprintf(w, "Hostname:\t%s\n", cfg.Hostname)
 	}
 	if len(cfg.DnsServers) > 0 {
-		fmt.Fprintf(w, "DNS Servers:\t%s\n", strings.Join(cfg.DnsServers, ", "))
+		_, _ = fmt.Fprintf(w, "DNS Servers:\t%s\n", strings.Join(cfg.DnsServers, ", "))
 	}
 	if len(cfg.NtpServers) > 0 {
-		fmt.Fprintf(w, "NTP Servers:\t%s\n", strings.Join(cfg.NtpServers, ", "))
+		_, _ = fmt.Fprintf(w, "NTP Servers:\t%s\n", strings.Join(cfg.NtpServers, ", "))
 	}
 	if len(cfg.KernelArgs) > 0 {
-		fmt.Fprintf(w, "Kernel Args:\t%s\n", strings.Join(cfg.KernelArgs, " "))
+		_, _ = fmt.Fprintf(w, "Kernel Args:\t%s\n", strings.Join(cfg.KernelArgs, " "))
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	if cfg.Network != nil && len(cfg.Network.Interfaces) > 0 {
 		fmt.Println()
 		nw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(nw, "INTERFACE\tDHCP\tADDRESSES\tGATEWAY\tMTU\n")
+		_, _ = fmt.Fprintf(nw, "INTERFACE\tDHCP\tADDRESSES\tGATEWAY\tMTU\n")
 		for _, iface := range cfg.Network.Interfaces {
 			dhcp := "no"
 			if iface.Dhcp {
@@ -361,9 +360,9 @@ func cmdConfigGet(ctx context.Context, c pb.MachineServiceClient) error {
 			if iface.Mtu > 0 {
 				mtu = fmt.Sprintf("%d", iface.Mtu)
 			}
-			fmt.Fprintf(nw, "%s\t%s\t%s\t%s\t%s\n", iface.Name, dhcp, addrs, iface.Gateway, mtu)
+			_, _ = fmt.Fprintf(nw, "%s\t%s\t%s\t%s\t%s\n", iface.Name, dhcp, addrs, iface.Gateway, mtu)
 		}
-		nw.Flush()
+		_ = nw.Flush()
 	}
 	return nil
 }
@@ -371,7 +370,7 @@ func cmdConfigGet(ctx context.Context, c pb.MachineServiceClient) error {
 func cmdUpgrade(ctx context.Context, c pb.MachineServiceClient, args []string) error {
 	fs := flag.NewFlagSet("upgrade", flag.ExitOnError)
 	image := fs.String("image", "", "target OS image (required)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *image == "" {
 		return fmt.Errorf("usage: hbctl upgrade --image <image-ref>")
@@ -383,10 +382,10 @@ func cmdUpgrade(ctx context.Context, c pb.MachineServiceClient, args []string) e
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "Current Image:\t%s\n", resp.CurrentImage)
-	fmt.Fprintf(w, "Current Digest:\t%s\n", resp.CurrentDigest)
-	fmt.Fprintf(w, "Staged Image:\t%s\n", resp.StagedImage)
-	fmt.Fprintf(w, "Reboot Required:\t%v\n", resp.RebootRequired)
+	_, _ = fmt.Fprintf(w, "Current Image:\t%s\n", resp.CurrentImage)
+	_, _ = fmt.Fprintf(w, "Current Digest:\t%s\n", resp.CurrentDigest)
+	_, _ = fmt.Fprintf(w, "Staged Image:\t%s\n", resp.StagedImage)
+	_, _ = fmt.Fprintf(w, "Reboot Required:\t%v\n", resp.RebootRequired)
 	return w.Flush()
 }
 
@@ -397,9 +396,9 @@ func cmdRollback(ctx context.Context, c pb.MachineServiceClient) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "Current Image:\t%s\n", resp.CurrentImage)
-	fmt.Fprintf(w, "Rollback Image:\t%s\n", resp.RollbackImage)
-	fmt.Fprintf(w, "Reboot Required:\t%v\n", resp.RebootRequired)
+	_, _ = fmt.Fprintf(w, "Current Image:\t%s\n", resp.CurrentImage)
+	_, _ = fmt.Fprintf(w, "Rollback Image:\t%s\n", resp.RollbackImage)
+	_, _ = fmt.Fprintf(w, "Reboot Required:\t%v\n", resp.RebootRequired)
 	return w.Flush()
 }
 
@@ -437,7 +436,7 @@ func cmdBootstrap(endpoint string, args []string) {
 	token := fs.String("token", "", "bootstrap token (required)")
 	fingerprint := fs.String("ca-fingerprint", "", "expected CA fingerprint sha256:<hex> (required)")
 	outputDir := fs.String("output-dir", "", "directory to write certs (required)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *token == "" || *fingerprint == "" || *outputDir == "" {
 		fmt.Fprintf(os.Stderr, "usage: hbctl bootstrap --endpoint <addr> --token <token> --ca-fingerprint sha256:<hex> --output-dir <dir>\n")
@@ -456,7 +455,7 @@ func cmdBootstrap(endpoint string, args []string) {
 	if err != nil {
 		fatal(fmt.Errorf("connect: %w", err))
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	c := pb.NewMachineServiceClient(conn)
 

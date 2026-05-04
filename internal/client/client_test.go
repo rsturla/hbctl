@@ -21,7 +21,7 @@ func TestConnect_MissingClientCert(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 
 	_, _, err := Connect(Config{Endpoint: "127.0.0.1:50000", TLSDir: dir})
 	if err == nil {
@@ -33,14 +33,14 @@ func TestConnect_ValidCerts(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 
 	certPEM, keyPEM, err := pki.GenerateClientCert(dir, "test")
 	if err != nil {
 		t.Fatalf("generate client cert: %v", err)
 	}
-	os.WriteFile(filepath.Join(dir, "client.crt"), certPEM, 0o600)
-	os.WriteFile(filepath.Join(dir, "client.key"), keyPEM, 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "client.crt"), certPEM, 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "client.key"), keyPEM, 0o600)
 
 	c, conn, err := Connect(Config{Endpoint: "127.0.0.1:50000", TLSDir: dir})
 	if err != nil {
@@ -57,11 +57,11 @@ func TestLoadClientTLS_MinVersion(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	pki.Bootstrap(dir)
+	_ = pki.Bootstrap(dir)
 
 	certPEM, keyPEM, _ := pki.GenerateClientCert(dir, "test")
-	os.WriteFile(filepath.Join(dir, "client.crt"), certPEM, 0o600)
-	os.WriteFile(filepath.Join(dir, "client.key"), keyPEM, 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "client.crt"), certPEM, 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "client.key"), keyPEM, 0o600)
 
 	tlsCfg, err := loadClientTLS(dir)
 	if err != nil {

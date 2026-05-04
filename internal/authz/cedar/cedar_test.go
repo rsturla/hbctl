@@ -167,7 +167,7 @@ func TestInvalidPolicyFile(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "bad.cedar"), []byte("not valid cedar syntax!!!"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "bad.cedar"), []byte("not valid cedar syntax!!!"), 0o644)
 
 	cfg, _ := json.Marshal(Config{PolicyDir: dir})
 	_, err := New(cfg)
@@ -180,8 +180,8 @@ func TestNonCedarFilesIgnored(t *testing.T) {
 	t.Parallel()
 
 	dir := setupPolicies(t, adminPolicy)
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not a policy"), 0o644)
-	os.WriteFile(filepath.Join(dir, "notes.md"), []byte("# notes"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not a policy"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "notes.md"), []byte("# notes"), 0o644)
 
 	p := newProvider(t, dir)
 
@@ -196,8 +196,8 @@ func TestMultiplePolicyFiles(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "01-admins.cedar"), []byte(adminPolicy), 0o644)
-	os.WriteFile(filepath.Join(dir, "02-monitoring.cedar"), []byte(readOnlyPolicy), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "01-admins.cedar"), []byte(adminPolicy), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "02-monitoring.cedar"), []byte(readOnlyPolicy), 0o644)
 
 	p := newProvider(t, dir)
 

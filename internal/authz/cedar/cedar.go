@@ -77,7 +77,7 @@ func (p *Provider) Authorize(_ context.Context, identity authn.Identity, action 
 		Context:   cedartypes.NewRecord(cedartypes.RecordMap{}),
 	}
 
-	decision, diag := p.policies.IsAuthorized(entities, req)
+	decision, diag := cedarlib.Authorize(p.policies, entities, req)
 
 	if len(diag.Errors) > 0 {
 		for _, e := range diag.Errors {
