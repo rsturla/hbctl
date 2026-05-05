@@ -13,6 +13,7 @@ import (
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/rsturla/hbctl/internal/agent"
 	apiv1 "github.com/rsturla/hbctl/internal/api/v1alpha1"
+	"github.com/rsturla/hbctl/internal/audit"
 	"github.com/rsturla/hbctl/internal/authn"
 	authnmtls "github.com/rsturla/hbctl/internal/authn/mtls"
 	authnoidc "github.com/rsturla/hbctl/internal/authn/oidc"
@@ -108,11 +109,33 @@ func run(cfg *config.Config) error {
 		slog.Info("server fingerprint", "fingerprint", fp)
 	}
 
+	auditLogger, err := audit.NewFileLogger(audit.DefaultConfig())
+	if err != nil {
+		slog.Warn("audit logging disabled", "error", err)
+	}
+	if auditLogger != nil {
+		defer func() { _ = auditLogger.Close() }()
+	}
+
+	emitLifecycle := func(eventType, outcome string) {
+		if auditLogger == nil {
+			return
+		}
+		auditLogger.Log(audit.Event{
+			Type:    "lifecycle." + eventType,
+			Action:  eventType,
+			Outcome: outcome,
+		})
+	}
+
+	emitLifecycle("startup", "success")
+
 	srv := agent.NewServer(agent.Options{
 		TLS:             tlsCfg,
 		Deps:            deps,
 		Auth:            auth,
 		Authz:           az,
+		Audit:           auditLogger,
 		BootstrapActive: bm.Enabled(),
 	})
 
@@ -130,12 +153,13 @@ func run(cfg *config.Config) error {
 	g.Go(func() error {
 		<-gctx.Done()
 		slog.Info("shutting down gRPC server")
+		emitLifecycle("shutdown", "success")
 		srv.GracefulStop()
 		return nil
 	})
 
 	g.Go(func() error {
-		return watchdogLoop(gctx, healthAgg, cfg.HealthInterval)
+		return watchdogLoop(gctx, healthAgg, cfg.HealthInterval, auditLogger)
 	})
 
 	if _, err := daemon.SdNotify(false, daemon.SdNotifyReady); err != nil {
@@ -202,9 +226,11 @@ func createAuthorizer(cfg *config.Config) (authz.Authorizer, error) {
 	return registry.Create(cfg.AuthzMethod, cfgJSON)
 }
 
-func watchdogLoop(ctx context.Context, checker health.Checker, interval time.Duration) error {
+func watchdogLoop(ctx context.Context, checker health.Checker, interval time.Duration, auditLog audit.Logger) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	prevStatus := health.Unknown
 
 	for {
 		select {
@@ -216,6 +242,26 @@ func watchdogLoop(ctx context.Context, checker health.Checker, interval time.Dur
 				slog.Warn("health check failed", "error", err)
 				continue
 			}
+
+			if result.Status != prevStatus && prevStatus != health.Unknown {
+				statusName := map[health.Status]string{
+					health.Healthy: "healthy", health.Degraded: "degraded", health.Unhealthy: "unhealthy",
+				}
+				slog.Info("health state changed", "from", statusName[prevStatus], "to", statusName[result.Status])
+				if auditLog != nil {
+					auditLog.Log(audit.Event{
+						Type:    "lifecycle.health_change",
+						Action:  "health_change",
+						Outcome: statusName[result.Status],
+						Detail: map[string]string{
+							"from": statusName[prevStatus],
+							"to":   statusName[result.Status],
+						},
+					})
+				}
+			}
+			prevStatus = result.Status
+
 			if result.Status != health.Unhealthy {
 				if _, err := daemon.SdNotify(false, daemon.SdNotifyWatchdog); err != nil {
 					slog.Warn("sd_notify WATCHDOG failed", "error", err)

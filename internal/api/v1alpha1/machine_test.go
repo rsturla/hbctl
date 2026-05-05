@@ -35,7 +35,7 @@ func (f *fakeBootcReader) Switch(_ context.Context, _ string) error { return nil
 func (f *fakeBootcReader) Rollback(_ context.Context) error         { return nil }
 
 func newTestMachineServer(h health.Checker, b bootc.Manager) *MachineServer {
-	return NewMachineServer(Deps{Health: h, Bootc: b}, &authz.AllowAll{})
+	return NewMachineServer(Deps{Health: h, Bootc: b}, &authz.AllowAll{}, nil)
 }
 
 func TestVersion(t *testing.T) {

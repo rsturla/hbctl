@@ -20,13 +20,13 @@ const adminPolicy = `permit(
 
 const readOnlyPolicy = `permit(
   principal in Group::"monitoring",
-  action in [Action::"Version", Action::"Health", Action::"Stats", Action::"Logs", Action::"Dmesg", Action::"ServiceStatus", Action::"GetConfig"],
+  action in [Action::"core:GetVersion", Action::"core:GetHealth", Action::"diagnostics:GetStats", Action::"diagnostics:StreamLogs", Action::"diagnostics:StreamDmesg", Action::"services:DescribeService", Action::"config:GetConfig"],
   resource
 );`
 
 const denyRebootPolicy = `forbid(
   principal,
-  action == Action::"Reboot",
+  action == Action::"lifecycle:StartReboot",
   resource
 ) unless { principal in Group::"admins" };`
 
@@ -61,11 +61,11 @@ func TestAdminAccess(t *testing.T) {
 	admin := authn.Identity{Name: "admin-user", Groups: []string{"admins"}}
 
 	actions := []string{
-		"/hb.v1alpha1.MachineService/Version",
-		"/hb.v1alpha1.MachineService/Health",
-		"/hb.v1alpha1.MachineService/Reboot",
-		"/hb.v1alpha1.MachineService/Upgrade",
-		"/hb.v1alpha1.MachineService/ApplyConfig",
+		"core:GetVersion",
+		"core:GetHealth",
+		"lifecycle:StartReboot",
+		"lifecycle:StageUpgrade",
+		"config:PutConfig",
 	}
 
 	for _, action := range actions {
@@ -87,17 +87,17 @@ func TestReadOnlyAccess(t *testing.T) {
 
 	monitor := authn.Identity{Name: "monitor", Groups: []string{"monitoring"}}
 
-	allowed := []string{"Version", "Health", "Stats", "Logs", "Dmesg", "ServiceStatus", "GetConfig"}
+	allowed := []string{"core:GetVersion", "core:GetHealth", "diagnostics:GetStats", "diagnostics:StreamLogs", "diagnostics:StreamDmesg", "services:DescribeService", "config:GetConfig"}
 	for _, a := range allowed {
-		d, _ := p.Authorize(context.Background(), monitor, "/hb.v1alpha1.MachineService/"+a, authz.ThisNode())
+		d, _ := p.Authorize(context.Background(), monitor, a, authz.ThisNode())
 		if d != authz.Allow {
 			t.Errorf("monitoring should access %s", a)
 		}
 	}
 
-	denied := []string{"Reboot", "Upgrade", "Rollback", "ApplyConfig"}
+	denied := []string{"lifecycle:StartReboot", "lifecycle:StageUpgrade", "lifecycle:RollbackUpgrade", "config:PutConfig"}
 	for _, a := range denied {
-		d, _ := p.Authorize(context.Background(), monitor, "/hb.v1alpha1.MachineService/"+a, authz.ThisNode())
+		d, _ := p.Authorize(context.Background(), monitor, a, authz.ThisNode())
 		if d != authz.Deny {
 			t.Errorf("monitoring should NOT access %s", a)
 		}
@@ -111,13 +111,13 @@ func TestDenyReboot(t *testing.T) {
 	p := newProvider(t, dir)
 
 	monitor := authn.Identity{Name: "monitor", Groups: []string{"monitoring"}}
-	d, _ := p.Authorize(context.Background(), monitor, "/hb.v1alpha1.MachineService/Reboot", authz.ThisNode())
+	d, _ := p.Authorize(context.Background(), monitor, "lifecycle:StartReboot", authz.ThisNode())
 	if d != authz.Deny {
 		t.Error("monitoring should be denied Reboot by forbid policy")
 	}
 
 	admin := authn.Identity{Name: "admin", Groups: []string{"admins"}}
-	d, _ = p.Authorize(context.Background(), admin, "/hb.v1alpha1.MachineService/Reboot", authz.ThisNode())
+	d, _ = p.Authorize(context.Background(), admin, "lifecycle:StartReboot", authz.ThisNode())
 	if d != authz.Allow {
 		t.Error("admin should still be allowed Reboot (unless clause)")
 	}
@@ -130,7 +130,7 @@ func TestNoGroupsDenied(t *testing.T) {
 	p := newProvider(t, dir)
 
 	nobody := authn.Identity{Name: "unknown-user"}
-	d, _ := p.Authorize(context.Background(), nobody, "/hb.v1alpha1.MachineService/Version", authz.ThisNode())
+	d, _ := p.Authorize(context.Background(), nobody, "core:GetVersion", authz.ThisNode())
 	if d != authz.Deny {
 		t.Error("user with no groups should be denied")
 	}
@@ -186,7 +186,7 @@ func TestNonCedarFilesIgnored(t *testing.T) {
 	p := newProvider(t, dir)
 
 	admin := authn.Identity{Name: "admin", Groups: []string{"admins"}}
-	d, _ := p.Authorize(context.Background(), admin, "/hb.v1alpha1.MachineService/Version", authz.ThisNode())
+	d, _ := p.Authorize(context.Background(), admin, "core:GetVersion", authz.ThisNode())
 	if d != authz.Allow {
 		t.Error("admin should be allowed — non-.cedar files should be ignored")
 	}
@@ -202,13 +202,13 @@ func TestMultiplePolicyFiles(t *testing.T) {
 	p := newProvider(t, dir)
 
 	admin := authn.Identity{Name: "admin", Groups: []string{"admins"}}
-	d, _ := p.Authorize(context.Background(), admin, "/hb.v1alpha1.MachineService/Reboot", authz.ThisNode())
+	d, _ := p.Authorize(context.Background(), admin, "lifecycle:StartReboot", authz.ThisNode())
 	if d != authz.Allow {
 		t.Error("admin should be allowed from 01-admins.cedar")
 	}
 
 	monitor := authn.Identity{Name: "mon", Groups: []string{"monitoring"}}
-	d, _ = p.Authorize(context.Background(), monitor, "/hb.v1alpha1.MachineService/Health", authz.ThisNode())
+	d, _ = p.Authorize(context.Background(), monitor, "core:GetHealth", authz.ThisNode())
 	if d != authz.Allow {
 		t.Error("monitor should be allowed from 02-monitoring.cedar")
 	}

@@ -8,6 +8,7 @@ import (
 	"net"
 
 	apiv1 "github.com/rsturla/hbctl/internal/api/v1alpha1"
+	"github.com/rsturla/hbctl/internal/audit"
 	"github.com/rsturla/hbctl/internal/authn"
 	"github.com/rsturla/hbctl/internal/authz"
 	pb "github.com/rsturla/hbctl/internal/gen/hb/v1alpha1"
@@ -25,6 +26,7 @@ type Options struct {
 	Deps            apiv1.Deps
 	Auth            authn.Authenticator
 	Authz           authz.Authorizer
+	Audit           audit.Logger
 	BootstrapActive bool
 }
 
@@ -57,7 +59,7 @@ func NewServer(opts Options) *Server {
 
 	gs := grpc.NewServer(serverOpts...)
 
-	machine := apiv1.NewMachineServer(opts.Deps, opts.Authz)
+	machine := apiv1.NewMachineServer(opts.Deps, opts.Authz, opts.Audit)
 	pb.RegisterMachineServiceServer(gs, machine)
 
 	reflection.Register(gs)

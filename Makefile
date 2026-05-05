@@ -40,7 +40,7 @@ fuzz:
 		for target in $$targets; do \
 			count=$$((count + 1)); \
 			echo "  [$$count] $$target ($$pkg) $(FUZZ_TIME)"; \
-			output=$$($(GO) test -fuzz=^$$target$$ -fuzztime=$(FUZZ_TIME) $$pkg 2>&1); \
+			output=$$($(GO) test -fuzz=^$$target$$ -fuzztime=$(FUZZ_TIME) -timeout=60s $$pkg 2>&1); \
 			if [ $$? -ne 0 ]; then echo "  FAIL: $$target ($$pkg)"; echo "$$output" | tail -20; failed=1; fi; \
 		done; \
 	done; \
