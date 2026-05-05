@@ -18,7 +18,10 @@ type Command interface {
 type Globals struct {
 	Endpoint string
 	TLSDir   string
+	Output   string // "text" (default) or "json"
 }
+
+func (g Globals) JSON() bool { return g.Output == "json" }
 
 type App struct {
 	name     string
@@ -67,6 +70,7 @@ func (a *App) parse(args []string) (Globals, string, []string, error) {
 	g := Globals{
 		Endpoint: envOr("HBCTL_ENDPOINT", "127.0.0.1:50000"),
 		TLSDir:   envOr("HBCTL_TLS_DIR", "/var/lib/hummingbird/pki"),
+		Output:   envOr("HBCTL_OUTPUT", "text"),
 	}
 
 	for len(args) > 0 {
@@ -83,6 +87,15 @@ func (a *App) parse(args []string) (Globals, string, []string, error) {
 		case strings.HasPrefix(args[0], "--tls-dir="):
 			g.TLSDir = strings.TrimPrefix(args[0], "--tls-dir=")
 			args = args[1:]
+		case args[0] == "--output" && len(args) > 1:
+			g.Output = args[1]
+			args = args[2:]
+		case strings.HasPrefix(args[0], "--output="):
+			g.Output = strings.TrimPrefix(args[0], "--output=")
+			args = args[1:]
+		case args[0] == "-o" && len(args) > 1:
+			g.Output = args[1]
+			args = args[2:]
 		default:
 			return g, args[0], args[1:], nil
 		}
@@ -96,7 +109,8 @@ func (a *App) usage() {
 	_, _ = fmt.Fprintf(a.out, "Usage: %s [--endpoint <addr>] [--tls-dir <dir>] <command> [flags]\n\n", a.name)
 	_, _ = fmt.Fprintf(a.out, "Global flags:\n")
 	_, _ = fmt.Fprintf(a.out, "  --endpoint <addr>  Agent address (default: 127.0.0.1:50000, env: HBCTL_ENDPOINT)\n")
-	_, _ = fmt.Fprintf(a.out, "  --tls-dir <dir>    TLS cert directory (default: /var/lib/hummingbird/pki, env: HBCTL_TLS_DIR)\n\n")
+	_, _ = fmt.Fprintf(a.out, "  --tls-dir <dir>    TLS cert directory (default: /var/lib/hummingbird/pki, env: HBCTL_TLS_DIR)\n")
+	_, _ = fmt.Fprintf(a.out, "  -o, --output <fmt> Output format: text or json (default: text, env: HBCTL_OUTPUT)\n\n")
 	_, _ = fmt.Fprintf(a.out, "Commands:\n")
 
 	w := tabwriter.NewWriter(a.out, 0, 0, 2, ' ', 0)
