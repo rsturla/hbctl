@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	pb "github.com/rsturla/hbctl/internal/gen/hb/v1alpha1"
+	"github.com/rsturla/hbctl/internal/audit"
 	"github.com/rsturla/hbctl/internal/authz"
 	"github.com/rsturla/hbctl/internal/bootstrap"
 	"github.com/rsturla/hbctl/internal/validate"
@@ -27,7 +28,7 @@ var version = "0.1.0-dev"
 
 type MachineServer struct {
 	pb.UnimplementedMachineServiceServer
-	az authz.Authorizer
+	deps handler.Deps
 
 	version        handler.Unary[*pb.VersionRequest, *pb.VersionResponse]
 	health         handler.Unary[*pb.HealthRequest, *pb.HealthResponse]
@@ -38,7 +39,9 @@ type MachineServer struct {
 	upgradeH       handler.Unary[*pb.UpgradeRequest, *pb.UpgradeResponse]
 	rollback       handler.Unary[*pb.RollbackRequest, *pb.RollbackResponse]
 	reboot         handler.Unary[*pb.RebootRequest, *pb.RebootResponse]
-	serviceControl handler.Unary[*pb.ServiceControlRequest, *pb.ServiceControlResponse]
+	startService   handler.Unary[*pb.ServiceControlRequest, *pb.ServiceControlResponse]
+	stopService    handler.Unary[*pb.ServiceControlRequest, *pb.ServiceControlResponse]
+	restartService handler.Unary[*pb.ServiceControlRequest, *pb.ServiceControlResponse]
 	logs           handler.ServerStream[*pb.LogsRequest, *pb.LogsResponse]
 	dmesg          handler.ServerStream[*pb.DmesgRequest, *pb.DmesgResponse]
 
@@ -56,23 +59,23 @@ type Deps struct {
 	Bootstrap *bootstrap.Manager
 }
 
-func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
-	diag := NewDiagnosticsServer(deps.Journal, deps.Systemd, deps.Proc)
-	cfgSrv := newConfigServerFromDeps(deps)
-	upgradeMgr := newUpgradeManagerFromDeps(deps)
+func NewMachineServer(srvDeps Deps, az authz.Authorizer, auditLog audit.Logger) *MachineServer {
+	diag := NewDiagnosticsServer(srvDeps.Journal, srvDeps.Systemd, srvDeps.Proc)
+	cfgSrv := newConfigServerFromDeps(srvDeps)
+	upgradeMgr := newUpgradeManagerFromDeps(srvDeps)
 
 	s := &MachineServer{
-		az:           az,
-		bootstrapMgr: deps.Bootstrap,
+		deps: handler.Deps{Authz: az, Audit: auditLog},
+		bootstrapMgr: srvDeps.Bootstrap,
 
 		// Read-only RPCs — resource is always ThisNode
-		version: handler.NewReadOnly("Version", func(ctx context.Context, _ *pb.VersionRequest) (*pb.VersionResponse, error) {
+		version: handler.NewReadOnly(handler.Action("core", handler.VerbGet, "Version"), func(ctx context.Context, _ *pb.VersionRequest) (*pb.VersionResponse, error) {
 			resp := &pb.VersionResponse{
 				Version:   version,
 				GoVersion: runtime.Version(),
 			}
-			if deps.Bootc != nil {
-				st, err := deps.Bootc.Status(ctx)
+			if srvDeps.Bootc != nil {
+				st, err := srvDeps.Bootc.Status(ctx)
 				if err == nil {
 					resp.OsImage = st.Image
 					resp.OsVersion = st.Version
@@ -83,8 +86,8 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 			return resp, nil
 		}),
 
-		health: handler.NewReadOnly("Health", func(ctx context.Context, _ *pb.HealthRequest) (*pb.HealthResponse, error) {
-			result, err := deps.Health.Check(ctx)
+		health: handler.NewReadOnly(handler.Action("core", handler.VerbGet, "Health"), func(ctx context.Context, _ *pb.HealthRequest) (*pb.HealthResponse, error) {
+			result, err := srvDeps.Health.Check(ctx)
 			if err != nil {
 				return &pb.HealthResponse{Status: pb.HealthStatus_HEALTH_STATUS_UNHEALTHY}, nil
 			}
@@ -99,14 +102,14 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 			return resp, nil
 		}),
 
-		stats: handler.NewReadOnly("Stats", func(ctx context.Context, req *pb.StatsRequest) (*pb.StatsResponse, error) {
+		stats: handler.NewReadOnly(handler.Action("diagnostics", handler.VerbGet, "Stats"), func(ctx context.Context, req *pb.StatsRequest) (*pb.StatsResponse, error) {
 			if diag == nil {
 				return nil, fmt.Errorf("diagnostics not configured")
 			}
 			return diag.Stats(ctx, req)
 		}),
 
-		serviceStatus: handler.NewUnary("ServiceStatus",
+		serviceStatus: handler.NewUnary(handler.Action("services", handler.VerbDescribe, "Service"),
 			func(req *pb.ServiceStatusRequest) authz.Resource {
 				if req.Name == "" {
 					return authz.ThisNode()
@@ -121,7 +124,7 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 			},
 		),
 
-		getConfig: handler.NewReadOnly("GetConfig", func(ctx context.Context, req *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
+		getConfig: handler.NewReadOnly(handler.Action("config", handler.VerbGet, "Config"), func(ctx context.Context, req *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
 			if cfgSrv == nil {
 				return nil, fmt.Errorf("configuration not configured")
 			}
@@ -129,7 +132,7 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 		}),
 
 		// Mutating RPCs — resource is extracted from request
-		applyConfig: handler.NewUnary("ApplyConfig",
+		applyConfig: handler.NewUnary(handler.Action("config", handler.VerbPut, "Config"),
 			func(_ *pb.ApplyConfigRequest) authz.Resource { return authz.ConfigResource("machine") },
 			func(ctx context.Context, req *pb.ApplyConfigRequest) (*pb.ApplyConfigResponse, error) {
 				if cfgSrv == nil {
@@ -139,7 +142,7 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 			},
 		),
 
-		upgradeH: handler.NewUnary("Upgrade",
+		upgradeH: handler.NewUnary(handler.Action("lifecycle", handler.VerbStage, "Upgrade"),
 			func(req *pb.UpgradeRequest) authz.Resource {
 				if req.Image == "" {
 					return authz.ThisNode()
@@ -164,7 +167,7 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 			},
 		),
 
-		rollback: handler.NewUnary("Rollback",
+		rollback: handler.NewUnary(handler.Action("lifecycle", handler.VerbRollback, "Upgrade"),
 			func(_ *pb.RollbackRequest) authz.Resource { return authz.NodeResource("*") },
 			func(ctx context.Context, _ *pb.RollbackRequest) (*pb.RollbackResponse, error) {
 				if upgradeMgr == nil {
@@ -180,7 +183,7 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 			},
 		),
 
-		reboot: handler.NewUnary("Reboot",
+		reboot: handler.NewUnary(handler.Action("lifecycle", handler.VerbStart, "Reboot"),
 			func(_ *pb.RebootRequest) authz.Resource { return authz.NodeResource("*") },
 			func(ctx context.Context, _ *pb.RebootRequest) (*pb.RebootResponse, error) {
 				if upgradeMgr == nil {
@@ -190,51 +193,30 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 			},
 		),
 
-		serviceControl: handler.NewUnary("ServiceControl",
-			func(req *pb.ServiceControlRequest) authz.Resource {
-				if req.Name == "" {
-					return authz.ThisNode()
-				}
-				return authz.ServiceResource(req.Name)
-			},
-			func(ctx context.Context, req *pb.ServiceControlRequest) (*pb.ServiceControlResponse, error) {
-				if err := validate.UnitName(req.Name); err != nil {
-					return nil, fmt.Errorf("invalid unit: %w", err)
-				}
-				if deps.Systemd == nil {
-					return nil, fmt.Errorf("systemd not configured")
-				}
-				var err error
-				switch req.Action {
-				case pb.ServiceAction_SERVICE_ACTION_START:
-					err = deps.Systemd.StartUnit(ctx, req.Name)
-				case pb.ServiceAction_SERVICE_ACTION_STOP:
-					err = deps.Systemd.StopUnit(ctx, req.Name)
-				case pb.ServiceAction_SERVICE_ACTION_RESTART:
-					err = deps.Systemd.RestartUnit(ctx, req.Name)
-				default:
-					return nil, fmt.Errorf("unknown action: %v", req.Action)
-				}
-				if err != nil {
-					return nil, fmt.Errorf("service control: %w", err)
-				}
-				st, err := deps.Systemd.UnitStatus(ctx, req.Name)
-				if err != nil {
-					return nil, fmt.Errorf("get unit status: %w", err)
-				}
-				return &pb.ServiceControlResponse{Name: st.Name, ActiveState: st.ActiveState, SubState: st.SubState}, nil
-			},
+		startService: handler.NewUnary(handler.Action("services", handler.VerbStart, "Service"),
+			serviceResource,
+			serviceControlFn(srvDeps.Systemd, func(ctx context.Context, s systemd.Manager, name string) error { return s.StartUnit(ctx, name) }),
+		),
+
+		stopService: handler.NewUnary(handler.Action("services", handler.VerbStop, "Service"),
+			serviceResource,
+			serviceControlFn(srvDeps.Systemd, func(ctx context.Context, s systemd.Manager, name string) error { return s.StopUnit(ctx, name) }),
+		),
+
+		restartService: handler.NewUnary(handler.Action("services", handler.VerbRestart, "Service"),
+			serviceResource,
+			serviceControlFn(srvDeps.Systemd, func(ctx context.Context, s systemd.Manager, name string) error { return s.RestartUnit(ctx, name) }),
 		),
 
 		// Streaming RPCs
-		logs: handler.NewReadOnlyStream("Logs", func(ctx context.Context, req *pb.LogsRequest, send func(*pb.LogsResponse) error) error {
+		logs: handler.NewReadOnlyStream(handler.Action("diagnostics", handler.VerbStream, "Logs"), func(ctx context.Context, req *pb.LogsRequest, send func(*pb.LogsResponse) error) error {
 			if diag == nil {
 				return fmt.Errorf("diagnostics not configured")
 			}
 			return diag.LogsStream(ctx, req, send)
 		}),
 
-		dmesg: handler.NewReadOnlyStream("Dmesg", func(ctx context.Context, req *pb.DmesgRequest, send func(*pb.DmesgResponse) error) error {
+		dmesg: handler.NewReadOnlyStream(handler.Action("diagnostics", handler.VerbStream, "Dmesg"), func(ctx context.Context, req *pb.DmesgRequest, send func(*pb.DmesgResponse) error) error {
 			if diag == nil {
 				return fmt.Errorf("diagnostics not configured")
 			}
@@ -247,43 +229,53 @@ func NewMachineServer(deps Deps, az authz.Authorizer) *MachineServer {
 
 // gRPC interface adapters — one line each, auth built into Execute
 func (s *MachineServer) Version(ctx context.Context, req *pb.VersionRequest) (*pb.VersionResponse, error) {
-	return s.version.Execute(ctx, s.az, req)
+	return s.version.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) Health(ctx context.Context, req *pb.HealthRequest) (*pb.HealthResponse, error) {
-	return s.health.Execute(ctx, s.az, req)
+	return s.health.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) Stats(ctx context.Context, req *pb.StatsRequest) (*pb.StatsResponse, error) {
-	return s.stats.Execute(ctx, s.az, req)
+	return s.stats.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) ServiceStatus(ctx context.Context, req *pb.ServiceStatusRequest) (*pb.ServiceStatusResponse, error) {
-	return s.serviceStatus.Execute(ctx, s.az, req)
+	return s.serviceStatus.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) GetConfig(ctx context.Context, req *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
-	return s.getConfig.Execute(ctx, s.az, req)
+	return s.getConfig.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) ApplyConfig(ctx context.Context, req *pb.ApplyConfigRequest) (*pb.ApplyConfigResponse, error) {
-	return s.applyConfig.Execute(ctx, s.az, req)
+	return s.applyConfig.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) Upgrade(ctx context.Context, req *pb.UpgradeRequest) (*pb.UpgradeResponse, error) {
-	return s.upgradeH.Execute(ctx, s.az, req)
+	return s.upgradeH.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) Rollback(ctx context.Context, req *pb.RollbackRequest) (*pb.RollbackResponse, error) {
-	return s.rollback.Execute(ctx, s.az, req)
+	return s.rollback.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) Reboot(ctx context.Context, req *pb.RebootRequest) (*pb.RebootResponse, error) {
-	return s.reboot.Execute(ctx, s.az, req)
+	return s.reboot.Execute(ctx, s.deps, req)
 }
 func (s *MachineServer) ServiceControl(ctx context.Context, req *pb.ServiceControlRequest) (*pb.ServiceControlResponse, error) {
-	return s.serviceControl.Execute(ctx, s.az, req)
+	switch req.Action {
+	case pb.ServiceAction_SERVICE_ACTION_START:
+		return s.startService.Execute(ctx, s.deps, req)
+	case pb.ServiceAction_SERVICE_ACTION_STOP:
+		return s.stopService.Execute(ctx, s.deps, req)
+	case pb.ServiceAction_SERVICE_ACTION_RESTART:
+		return s.restartService.Execute(ctx, s.deps, req)
+	default:
+		return nil, fmt.Errorf("unknown service action: %v", req.Action)
+	}
 }
 func (s *MachineServer) Logs(req *pb.LogsRequest, stream grpc.ServerStreamingServer[pb.LogsResponse]) error {
-	return s.logs.Execute(stream.Context(), s.az, req, stream.Send)
+	return s.logs.Execute(stream.Context(), s.deps, req, stream.Send)
 }
 func (s *MachineServer) Dmesg(req *pb.DmesgRequest, stream grpc.ServerStreamingServer[pb.DmesgResponse]) error {
-	return s.dmesg.Execute(stream.Context(), s.az, req, stream.Send)
+	return s.dmesg.Execute(stream.Context(), s.deps, req, stream.Send)
 }
 
-// BootstrapAuth is unauthenticated — no handler wrapper, direct implementation
+// BootstrapAuth is unauthenticated — no handler wrapper, direct implementation.
+// Audit events emitted manually since this bypasses the handler framework.
 func (s *MachineServer) BootstrapAuth(ctx context.Context, req *pb.BootstrapAuthRequest) (*pb.BootstrapAuthResponse, error) {
 	if s.bootstrapMgr == nil || !s.bootstrapMgr.Enabled() {
 		return nil, fmt.Errorf("bootstrap not available")
@@ -294,10 +286,50 @@ func (s *MachineServer) BootstrapAuth(ctx context.Context, req *pb.BootstrapAuth
 	}
 	result, err := s.bootstrapMgr.Bootstrap(req.Token, req.Csr, peerAddr)
 	if err != nil {
+		s.emitBootstrapAudit(peerAddr, "denied")
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
+	s.emitBootstrapAudit(peerAddr, "success")
 	fp, _ := bootstrap.CAFingerprint(s.bootstrapMgr.TLSDir())
 	return &pb.BootstrapAuthResponse{CaCert: result.CACert, ClientCert: result.ClientCert, CaFingerprint: fp}, nil
+}
+
+func (s *MachineServer) emitBootstrapAudit(peerAddr, outcome string) {
+	if s.deps.Audit == nil {
+		return
+	}
+	s.deps.Audit.Log(audit.Event{
+		Type:     "bootstrap",
+		Action:   "BootstrapAuth",
+		Outcome:  outcome,
+		PeerAddr: peerAddr,
+	})
+}
+
+func serviceResource(req *pb.ServiceControlRequest) authz.Resource {
+	if req.Name == "" {
+		return authz.ThisNode()
+	}
+	return authz.ServiceResource(req.Name)
+}
+
+func serviceControlFn(sys systemd.Manager, op func(context.Context, systemd.Manager, string) error) func(context.Context, *pb.ServiceControlRequest) (*pb.ServiceControlResponse, error) {
+	return func(ctx context.Context, req *pb.ServiceControlRequest) (*pb.ServiceControlResponse, error) {
+		if err := validate.UnitName(req.Name); err != nil {
+			return nil, fmt.Errorf("invalid unit: %w", err)
+		}
+		if sys == nil {
+			return nil, fmt.Errorf("systemd not configured")
+		}
+		if err := op(ctx, sys, req.Name); err != nil {
+			return nil, fmt.Errorf("service control: %w", err)
+		}
+		st, err := sys.UnitStatus(ctx, req.Name)
+		if err != nil {
+			return nil, fmt.Errorf("get unit status: %w", err)
+		}
+		return &pb.ServiceControlResponse{Name: st.Name, ActiveState: st.ActiveState, SubState: st.SubState}, nil
+	}
 }
 
 func newConfigServerFromDeps(deps Deps) *ConfigServer {
