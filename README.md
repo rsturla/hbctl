@@ -84,10 +84,16 @@ HBCTL_TLS_DIR=~/.hbctl HBCTL_ENDPOINT=10.0.0.5:50000 ./bin/hbctl health
 
 ### CLI (`hbctl`)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HBCTL_ENDPOINT` | `127.0.0.1:50000` | Agent address |
-| `HBCTL_TLS_DIR` | `/var/lib/hummingbird/pki` | Directory with `ca.crt`, `client.crt`, `client.key` |
+```bash
+hbctl --endpoint 10.0.0.5:50000 --tls-dir ~/.hbctl/certs health
+```
+
+| Flag / Variable | Default | Description |
+|----------------|---------|-------------|
+| `--endpoint` / `HBCTL_ENDPOINT` | `127.0.0.1:50000` | Agent address |
+| `--tls-dir` / `HBCTL_TLS_DIR` | `/var/lib/hummingbird/pki` | Directory with `ca.crt`, `client.crt`, `client.key` |
+
+Flags override environment variables.
 
 ## Build
 

@@ -345,6 +345,73 @@ func TestVerifyLog_EmptyLog(t *testing.T) {
 	}
 }
 
+func TestFileLogger_RotationTriggered(t *testing.T) {
+	dir := t.TempDir()
+	// MaxSizeMB=1, each event ~300 bytes, need ~3500 events to hit 1MB
+	logger, err := NewFileLogger(Config{Dir: dir, MaxSizeMB: 1, MaxAgeDays: 90})
+	if err != nil {
+		t.Fatalf("NewFileLogger: %v", err)
+	}
+
+	// Write ~1.2MB of events (each ~350 bytes with padding)
+	for i := 0; i < 4000; i++ {
+		logger.Log(Event{
+			Type: "filler", Outcome: "success",
+			Detail: map[string]string{"i": fmt.Sprintf("%d", i)},
+		})
+	}
+	_ = logger.Close()
+
+	// Rotated file should exist
+	if _, err := os.Stat(filepath.Join(dir, "audit.log.1")); err != nil {
+		t.Error("audit.log.1 should exist after rotation")
+	}
+
+	// Current audit.log should exist and be smaller than max
+	info, err := os.Stat(filepath.Join(dir, "audit.log"))
+	if err != nil {
+		t.Fatal("audit.log should exist after rotation")
+	}
+	if info.Size() > 1024*1024 {
+		t.Errorf("audit.log should be < 1MB after rotation, got %d bytes", info.Size())
+	}
+}
+
+func TestFileLogger_NoRotation_WhenDisabled(t *testing.T) {
+	dir := t.TempDir()
+	logger, _ := NewFileLogger(Config{Dir: dir, MaxSizeMB: 0, MaxAgeDays: 90})
+
+	for i := 0; i < 100; i++ {
+		logger.Log(Event{Type: "test", Outcome: "success"})
+	}
+	_ = logger.Close()
+
+	if _, err := os.Stat(filepath.Join(dir, "audit.log.1")); !os.IsNotExist(err) {
+		t.Error("should not rotate when MaxSizeMB=0")
+	}
+}
+
+func TestFileLogger_RotationChainContinuity(t *testing.T) {
+	dir := t.TempDir()
+	logger, _ := NewFileLogger(Config{Dir: dir, MaxSizeMB: 1, MaxAgeDays: 90})
+
+	// Write enough to trigger rotation
+	for i := 0; i < 4000; i++ {
+		logger.Log(Event{Type: "chain", Outcome: "success", Detail: map[string]string{"i": fmt.Sprintf("%d", i)}})
+	}
+	_ = logger.Close()
+
+	// The current audit.log should be verifiable on its own
+	// (chain restarts after rotation — prevHash reads from new file)
+	result, err := VerifyLog(filepath.Join(dir, "audit.log"), filepath.Join(dir, "hmac.key"))
+	if err != nil {
+		t.Fatalf("VerifyLog: %v", err)
+	}
+	if result.InvalidHash != 0 {
+		t.Errorf("InvalidHash = %d — current log should be valid", result.InvalidHash)
+	}
+}
+
 func FuzzComputeHash(f *testing.F) {
 	f.Add("authn.success", "admin", "Version", "Service", "crio.service", "success", "10.0.0.1:1234")
 	f.Add("", "", "", "", "", "", "")

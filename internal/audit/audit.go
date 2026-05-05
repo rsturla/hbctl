@@ -150,6 +150,8 @@ func (l *FileLogger) Log(event Event) {
 		return
 	}
 
+	l.maybeRotate()
+
 	if _, err := l.file.Write(append(data, '\n')); err != nil {
 		slog.Error("audit write failed", "error", err, "event_id", event.ID)
 	}
@@ -187,6 +189,62 @@ func (l *FileLogger) Close() error {
 	l.subMu.Unlock()
 
 	return l.file.Close()
+}
+
+func (l *FileLogger) maybeRotate() {
+	if l.cfg.MaxSizeMB <= 0 {
+		return
+	}
+
+	info, err := l.file.Stat()
+	if err != nil {
+		return
+	}
+
+	maxBytes := int64(l.cfg.MaxSizeMB) * 1024 * 1024
+	if info.Size() < maxBytes {
+		return
+	}
+
+	_ = l.file.Close()
+
+	logPath := filepath.Join(l.cfg.Dir, "audit.log")
+
+	// Shift existing rotated files: .3 → .4, .2 → .3, .1 → .2
+	for i := 4; i >= 1; i-- {
+		from := fmt.Sprintf("%s.%d", logPath, i)
+		to := fmt.Sprintf("%s.%d", logPath, i+1)
+		_ = os.Rename(from, to)
+	}
+	_ = os.Rename(logPath, logPath+".1")
+
+	// Delete old rotated files beyond retention
+	if l.cfg.MaxAgeDays > 0 {
+		cutoff := time.Now().AddDate(0, 0, -l.cfg.MaxAgeDays)
+		entries, _ := os.ReadDir(l.cfg.Dir)
+		for _, entry := range entries {
+			if entry.IsDir() || entry.Name() == "hmac.key" {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Before(cutoff) {
+				_ = os.Remove(filepath.Join(l.cfg.Dir, entry.Name()))
+				slog.Info("removed old audit log", "file", entry.Name())
+			}
+		}
+	}
+
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		slog.Error("failed to create new audit log after rotation", "error", err)
+		return
+	}
+	l.file = f
+
+	slog.Info("audit log rotated", "max_mb", l.cfg.MaxSizeMB)
 }
 
 func (l *FileLogger) computeHash(event Event) string {
