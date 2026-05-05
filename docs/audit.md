@@ -109,8 +109,20 @@ Max age: 90 days (default)
 ```
 
 Files:
-- `audit.log` — event log (0600)
+- `audit.log` — current event log (0600)
+- `audit.log.1` through `audit.log.5` — rotated logs (0600)
 - `hmac.key` — 32-byte HMAC key (0600)
+
+## Log Rotation
+
+When `audit.log` exceeds `MaxSizeMB`, the log is rotated:
+- `audit.log` → `audit.log.1` → `audit.log.2` → ... → `audit.log.5`
+- A new empty `audit.log` is created
+- Files older than `MaxAgeDays` are deleted
+- The HMAC chain restarts in the new file (previous chain is preserved in rotated files)
+- Set `MaxSizeMB=0` to disable rotation
+
+Up to 5 rotated files are kept. At 100MB default, that's 500MB max on disk.
 
 ## SIEM Integration
 

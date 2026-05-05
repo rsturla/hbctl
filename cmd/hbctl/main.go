@@ -24,16 +24,12 @@ import (
 
 
 func main() {
-	if len(os.Args) < 2 {
+	endpoint, tlsDir, cmd, args := parseGlobalFlags()
+
+	if cmd == "" {
 		usage()
 		os.Exit(1)
 	}
-
-	endpoint := envOr("HBCTL_ENDPOINT", "127.0.0.1:50000")
-	tlsDir := envOr("HBCTL_TLS_DIR", "/var/lib/hummingbird/pki")
-
-	cmd := os.Args[1]
-	args := os.Args[2:]
 
 	switch cmd {
 	case "version":
@@ -82,7 +78,11 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `hbctl — Hummingbird node management CLI
 
-Usage: hbctl <command> [flags]
+Usage: hbctl [--endpoint <addr>] [--tls-dir <dir>] <command> [flags]
+
+Global flags:
+  --endpoint <addr>  Agent address (default: 127.0.0.1:50000, env: HBCTL_ENDPOINT)
+  --tls-dir <dir>    TLS cert directory (default: /var/lib/hummingbird/pki, env: HBCTL_TLS_DIR)
 
 Commands:
   version          Show agent and OS version
@@ -97,10 +97,6 @@ Commands:
   reboot           Reboot the node
   bootstrap        Bootstrap mTLS credentials from a node
   gen-token        Generate a bootstrap token and its hash
-
-Environment:
-  HBCTL_ENDPOINT   Agent address (default: 127.0.0.1:50000)
-  HBCTL_TLS_DIR    TLS cert directory (default: /var/lib/hummingbird/pki)
 `)
 }
 
@@ -422,6 +418,34 @@ func humanBytes(b uint64) string {
 	default:
 		return fmt.Sprintf("%d B", b)
 	}
+}
+
+func parseGlobalFlags() (endpoint, tlsDir, cmd string, args []string) {
+	endpoint = envOr("HBCTL_ENDPOINT", "127.0.0.1:50000")
+	tlsDir = envOr("HBCTL_TLS_DIR", "/var/lib/hummingbird/pki")
+
+	remaining := os.Args[1:]
+	for len(remaining) > 0 {
+		switch {
+		case remaining[0] == "--endpoint" && len(remaining) > 1:
+			endpoint = remaining[1]
+			remaining = remaining[2:]
+		case strings.HasPrefix(remaining[0], "--endpoint="):
+			endpoint = strings.TrimPrefix(remaining[0], "--endpoint=")
+			remaining = remaining[1:]
+		case remaining[0] == "--tls-dir" && len(remaining) > 1:
+			tlsDir = remaining[1]
+			remaining = remaining[2:]
+		case strings.HasPrefix(remaining[0], "--tls-dir="):
+			tlsDir = strings.TrimPrefix(remaining[0], "--tls-dir=")
+			remaining = remaining[1:]
+		default:
+			cmd = remaining[0]
+			args = remaining[1:]
+			return
+		}
+	}
+	return
 }
 
 func envOr(key, fallback string) string {
