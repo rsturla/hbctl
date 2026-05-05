@@ -92,8 +92,15 @@ hbctl --endpoint 10.0.0.5:50000 --tls-dir ~/.hbctl/certs health
 |----------------|---------|-------------|
 | `--endpoint` / `HBCTL_ENDPOINT` | `127.0.0.1:50000` | Agent address |
 | `--tls-dir` / `HBCTL_TLS_DIR` | `/var/lib/hummingbird/pki` | Directory with `ca.crt`, `client.crt`, `client.key` |
+| `-o`, `--output` / `HBCTL_OUTPUT` | `text` | Output format: `text` or `json` |
 
 Flags override environment variables.
+
+JSON output example:
+```bash
+hbctl -o json health
+hbctl --output json stats
+```
 
 ## Build
 
